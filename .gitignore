@@ -1,0 +1,12 @@
+.DS_Store
+node_modules/
+work/prototypes/annotated-preview.html
+work/prototypes/kuromoji-0.1.2.tgz
+work/prototypes/kuromoji-package/
+coverage/
+.cache/
+*.log
+.env
+.env.*
+!.env.example
+work/tmp/

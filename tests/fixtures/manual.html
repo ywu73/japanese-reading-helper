@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YomiRuby manual fixture</title>
+  <style>
+    body { max-width: 760px; margin: 3rem auto; padding: 0 1rem; font: 20px/2 system-ui, sans-serif; }
+    section { margin: 2rem 0; padding: 1rem; border: 1px solid #ddd; }
+    code, pre { background: #f5f5f5; }
+    .hidden-by-css { display: none; }
+  </style>
+</head>
+<body>
+  <h1>日本語の注音テスト</h1>
+  <section id="ordinary">
+    <p>今日は東京の高校で日本語を勉強します。</p>
+    <p>食べる方法を調べています。大きい鳥について思う。</p>
+    <p>未知語候補：五月雨と小鳥遊。</p>
+    <a href="#ordinary">日本語のリンク</a>
+  </section>
+  <section id="existing-ruby">
+    <ruby>日本語<rt title="author-reading">にほんご</rt></ruby>
+    <ruby>型<rt class="katakana-terminator-rt" data-rt="type">タイプ</rt></ruby>
+  </section>
+  <section id="unsafe">
+    <form><label>氏名 <input value="日本語"></label><button>東京</button></form>
+    <div contenteditable="true">編集可能な日本語</div>
+    <pre>const 東京 = "日本語";</pre>
+    <code>勉強()</code>
+    <p hidden>隠れた日本語</p>
+    <p class="hidden-by-css">CSSで隠れた日本語</p>
+    <p aria-hidden="true">支援技術から隠れた日本語</p>
+  </section>
+  <section id="dynamic"><button id="add" type="button">動的な文を追加</button></section>
+  <script>
+    document.querySelector("#add").addEventListener("click", () => {
+      const paragraph = document.createElement("p");
+      paragraph.textContent = "新しい東京の記事で日本語を勉強する。";
+      document.querySelector("#dynamic").append(paragraph);
+    });
+  </script>
+</body>
+</html>
