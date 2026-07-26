@@ -30,7 +30,7 @@ export class AnnotationCoordinator {
     this.waitingByElement = new Map();
     this.translationCache = new Map();
     this.translationQueue = new Set();
-    this.translationActive = false;
+    this.translationActiveGeneration = null;
     this.katakanaGeneration = 0;
     this.katakanaAbortController = null;
     this.translationFlushScheduled = false;
@@ -374,7 +374,10 @@ export class AnnotationCoordinator {
   }
 
   #scheduleTranslationFlush() {
-    if (this.translationFlushScheduled || this.translationActive) {
+    if (
+      this.translationFlushScheduled
+      || this.translationActiveGeneration === this.katakanaGeneration
+    ) {
       return;
     }
     this.translationFlushScheduled = true;
@@ -385,7 +388,11 @@ export class AnnotationCoordinator {
   }
 
   async #flushTranslations() {
-    if (this.translationActive || !this.katakanaTranslator || this.translationQueue.size === 0) {
+    if (
+      this.translationActiveGeneration === this.katakanaGeneration
+      || !this.katakanaTranslator
+      || this.translationQueue.size === 0
+    ) {
       return;
     }
     const phrases = [...this.translationQueue];
@@ -393,14 +400,16 @@ export class AnnotationCoordinator {
     const generation = this.katakanaGeneration;
     const translator = this.katakanaTranslator;
     const signal = this.katakanaAbortController?.signal;
-    this.translationActive = true;
+    this.translationActiveGeneration = generation;
     let translations = new Map();
     try {
       translations = await translator(phrases, { signal });
     } catch {
       translations = new Map();
     } finally {
-      this.translationActive = false;
+      if (this.translationActiveGeneration === generation) {
+        this.translationActiveGeneration = null;
+      }
     }
     if (generation !== this.katakanaGeneration || translator !== this.katakanaTranslator || signal?.aborted) {
       if (this.translationQueue.size) {

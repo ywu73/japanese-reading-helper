@@ -28,6 +28,7 @@ export function createYomiRubySession({
   let katakanaActive = false;
   let kanjiGeneration = 0;
   let kanjiAbortController = null;
+  let currentTranslatePhrases = translatePhrases;
   let removeStyles = null;
   let statusElement = null;
   let statusTimer = null;
@@ -87,7 +88,7 @@ export function createYomiRubySession({
       }
       ensureStyles();
       try {
-        coordinator.enableKatakana(translatePhrases);
+        coordinator.enableKatakana(currentTranslatePhrases);
         katakanaActive = true;
       } catch (error) {
         katakanaActive = false;
@@ -104,6 +105,18 @@ export function createYomiRubySession({
       coordinator.disableKatakana();
       removeStatus();
       removeStylesIfUnused();
+    },
+    async setTranslator(nextTranslatePhrases) {
+      if (typeof nextTranslatePhrases !== "function") {
+        throw new TypeError("Katakana translator replacement requires a translation function.");
+      }
+      currentTranslatePhrases = nextTranslatePhrases;
+      if (!katakanaActive) {
+        return;
+      }
+      katakanaActive = false;
+      coordinator.disableKatakana();
+      await katakana.enable();
     },
   };
 

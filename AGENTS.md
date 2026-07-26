@@ -14,9 +14,16 @@ The project inherits the global collaboration rules from
 
 - Analyze kanji readings and Hepburn romaji locally in the browser.
 - The katakana module may send only matched, deduplicated katakana phrases to
-  `https://translate.googleapis.com/translate_a/single` only while the feature
-  is enabled for the exact current origin. It must never send surrounding sentences,
-  kanji, hiragana, page titles, page URLs, or browsing history.
+  the selected provider while the feature is enabled for the exact current
+  origin. Google is limited to
+  `https://translate.googleapis.com/translate_a/single`. Bing is limited to an
+  anonymous initialization GET at `https://www.bing.com/translator`, an allowed
+  redirect to the exact `www.bing.com` or `cn.bing.com` translator page, and a
+  POST to that same allowed origin's `/ttranslatev3` path. It must never send
+  surrounding sentences, kanji, hiragana, page titles, page URLs, origins, or
+  browsing history to either provider.
+- Never silently fall back between Google and Bing. A provider failure must
+  preserve source text and must not resend the phrase to the other provider.
 - Do not add any other remote translation, reading, AI, analytics, logging, or
   fallback endpoint without a new explicit product decision.
 - Third-party remote executable program and dictionary assets remain limited to
@@ -34,9 +41,11 @@ The project inherits the global collaboration rules from
 - Use Hepburn romaji with macrons by default, such as `kyō` and `Tōkyō`.
 - If the analyzer does not provide a reliable reading, leave the source text
   unchanged. Do not guess from individual kanji.
-- Keep readings, translations, matches, failures, pending work, and request
-  state in page memory only. Persistent storage is limited to the global
-  `yomi-ruby:locale` enum and exact-origin boolean feature settings.
+- Keep readings, translations, matches, failures, pending work, temporary Bing
+  configuration, and request state in page memory only. Persistent storage is
+  limited to the global `yomi-ruby:locale` enum, the global
+  `yomi-ruby:translation-provider = "bing" | "google"` enum, and exact-origin
+  boolean feature settings.
 
 ## 3. DOM Safety
 
@@ -70,12 +79,15 @@ Before a userscript build is considered deliverable, verify at minimum:
 - dependency versions, licenses, URLs, and SHA-256 digests;
 - lazy loading in the supported Tampermonkey environment;
 - absence of page text in outbound requests;
+- strict Bing redirect/config parsing, anonymous requests, bounded 401 refresh,
+  CAPTCHA/rate-limit failure, and no cross-provider fallback;
 - ordinary kanji, kanji-kana mixed words, macrons, and unknown readings;
 - existing kana ruby conversion and complete restoration;
 - coexistence with Katakana Terminator annotations;
 - forms, editable regions, code, links, hidden content, and nested markup;
 - MutationObserver and IntersectionObserver behavior on dynamic content;
-- repeated enable, disable, language-switch, failure, and rollback cycles;
+- repeated enable, disable, language-switch, provider-switch, failure, and
+  rollback cycles;
 - graceful behavior when assets, dictionaries, or integrity checks fail.
 
 Do not claim browser compatibility, accuracy, performance, privacy, or complete

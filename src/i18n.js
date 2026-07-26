@@ -6,8 +6,11 @@ const MESSAGES = Object.freeze({
     "menu.disableKanji": "Disable Kanji Romaji on this site",
     "menu.enableKatakana": "Enable Online Katakana English on this site",
     "menu.disableKatakana": "Disable Online Katakana English on this site",
+    "menu.translationProvider": ({ nextProvider }) => `Katakana Translator: Switch to ${providerName(nextProvider)}`,
     "menu.language": "语言 / Language: 切换到简体中文",
     "error.localePersistence": ({ error }) => `Could not save the language setting: ${error}`,
+    "error.translationProviderPersistence": ({ error }) => `Could not save the translation provider: ${error}. The previous provider remains active.`,
+    "error.translationProviderRead": ({ error }) => `Could not read the translation provider setting. This page is using the locale-derived default: ${error}`,
     "error.kanjiEnablePersistence": ({ error }) => `Could not save the Kanji Romaji setting: ${error}. The feature remains disabled.`,
     "error.kanjiDisablePersistence": ({ error }) => `Could not save the Kanji Romaji setting: ${error}. This page is disabled, but the feature may start again after reload.`,
     "error.katakanaEnablePersistence": ({ error }) => `Could not save the Online Katakana English setting: ${error}. The feature remains disabled.`,
@@ -22,8 +25,11 @@ const MESSAGES = Object.freeze({
     "menu.disableKanji": "关闭本网站汉字罗马音",
     "menu.enableKatakana": "开启本网站联网片假名英文",
     "menu.disableKatakana": "关闭本网站联网片假名英文",
+    "menu.translationProvider": ({ nextProvider }) => `片假名翻译服务：切换到 ${providerName(nextProvider)}`,
     "menu.language": "语言 / Language: Switch to English",
     "error.localePersistence": ({ error }) => `无法保存语言设置：${error}`,
+    "error.translationProviderPersistence": ({ error }) => `无法保存片假名翻译服务设置：${error}。继续使用原服务。`,
+    "error.translationProviderRead": ({ error }) => `无法读取片假名翻译服务设置，本页使用语言对应的默认服务：${error}`,
     "error.kanjiEnablePersistence": ({ error }) => `无法保存本网站汉字罗马音设置：${error}。功能保持关闭。`,
     "error.kanjiDisablePersistence": ({ error }) => `无法保存本网站汉字罗马音设置：${error}。本页已关闭，但刷新后可能再次启用。`,
     "error.katakanaEnablePersistence": ({ error }) => `无法保存本网站联网片假名英文设置：${error}。功能保持关闭。`,
@@ -34,6 +40,10 @@ const MESSAGES = Object.freeze({
     "error.katakanaStartup": ({ error }) => `无法安全启动联网片假名英文：${error}`,
   }),
 });
+
+function providerName(provider) {
+  return provider === "bing" ? "Bing" : "Google";
+}
 
 export function createLocalizer(initialLocale = "en", messages = MESSAGES) {
   let locale = isSupportedLocale(initialLocale) ? initialLocale : "en";

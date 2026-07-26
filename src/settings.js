@@ -5,9 +5,15 @@ const SETTING_PREFIXES = Object.freeze({
 
 export const LOCALE_SETTING_KEY = "yomi-ruby:locale";
 export const SUPPORTED_LOCALES = Object.freeze(["en", "zh"]);
+export const TRANSLATION_PROVIDER_SETTING_KEY = "yomi-ruby:translation-provider";
+export const SUPPORTED_TRANSLATION_PROVIDERS = Object.freeze(["bing", "google"]);
 
 export function isSupportedLocale(value) {
   return SUPPORTED_LOCALES.includes(value);
+}
+
+export function isSupportedTranslationProvider(value) {
+  return SUPPORTED_TRANSLATION_PROVIDERS.includes(value);
 }
 
 export function originSettingKey(feature, origin) {
@@ -40,4 +46,52 @@ export async function setStoredLocale(gmSetValue, locale) {
     throw new TypeError(`Unsupported YomiRuby locale: ${locale}`);
   }
   await gmSetValue(LOCALE_SETTING_KEY, locale);
+}
+
+export async function getStoredTranslationProvider(gmGetValue) {
+  return gmGetValue(TRANSLATION_PROVIDER_SETTING_KEY, null);
+}
+
+export async function setStoredTranslationProvider(gmSetValue, provider) {
+  if (!isSupportedTranslationProvider(provider)) {
+    throw new TypeError(`Unsupported YomiRuby translation provider: ${provider}`);
+  }
+  await gmSetValue(TRANSLATION_PROVIDER_SETTING_KEY, provider);
+}
+
+export async function initializeTranslationProvider({ getValue, setValue, locale }) {
+  const defaultProvider = locale === "zh" ? "bing" : "google";
+  let storedProvider;
+  try {
+    storedProvider = await getStoredTranslationProvider(getValue);
+  } catch (readError) {
+    return {
+      provider: defaultProvider,
+      readError,
+      persistenceError: null,
+    };
+  }
+
+  if (isSupportedTranslationProvider(storedProvider)) {
+    return {
+      provider: storedProvider,
+      readError: null,
+      persistenceError: null,
+    };
+  }
+
+  try {
+    await setStoredTranslationProvider(setValue, defaultProvider);
+    return {
+      provider: defaultProvider,
+      readError: null,
+      persistenceError: null,
+    };
+  } catch (persistenceError) {
+    return {
+      provider: defaultProvider,
+      readError: null,
+      persistenceError,
+    };
+  }
 }

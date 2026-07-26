@@ -7,7 +7,7 @@ It adds local Hepburn romaji above reliable words containing kanji and can add
 best-effort English ruby above matched katakana phrases through an optional
 online feature.
 
-**Version 0.3.0 is a locally verified release candidate. It has not yet passed
+**Version 0.4.0 is a locally verified release candidate. It has not yet passed
 the required desktop Chrome + Tampermonkey installation, extension-background
 network capture, update, real-site, or publication gates.**
 
@@ -26,7 +26,11 @@ network capture, update, real-site, or publication gates.**
 
 - Starts only after you enable it for the exact current origin.
 - Sends only matched, deduplicated katakana phrases near the viewport to the
-  fixed Google Translate no-key endpoint.
+  selected Google or Bing no-key web endpoint.
+- Defaults once to Bing for the Simplified-Chinese interface and Google for
+  every other interface locale; a saved or manually selected provider wins.
+- Never silently falls back across providers. A failure preserves source text
+  instead of resending the phrase elsewhere.
 - Keeps individual failures silent and leaves the source unchanged when a
   response is missing, ambiguous, invalid, or unsuitable.
 - Is experimental, best-effort, and not a promise of availability, accuracy,
@@ -38,7 +42,7 @@ The planned sole install and automatic-update URL is:
 
 <https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js>
 
-Do not treat that URL as a released stable build until the 0.3.0 browser and
+Do not treat that URL as a released stable build until the 0.4.0 browser and
 publication gates are recorded as complete. The supported compatibility target
 for the first public release is **desktop Google Chrome with Tampermonkey**.
 Other browsers and userscript managers are unverified and receive no
@@ -51,8 +55,9 @@ unconfigured exact origin**.
 
 ## Controls and language
 
-YomiRuby registers three Tampermonkey menu commands in a stable order: Kanji,
-Katakana, Language. Normal enable, disable, startup, and language-switch paths
+YomiRuby registers four Tampermonkey menu commands in a stable order: Kanji,
+Katakana, Translation Provider, Language. Normal enable, disable, startup,
+provider-switch, and language-switch paths
 do not create consent dialogs, loading banners, or success banners. Temporary
 non-modal notices are reserved for actionable failures such as a setting write
 failure or safe startup failure.
@@ -62,11 +67,14 @@ YomiRuby maps a primary browser language beginning with `zh` to Simplified
 Chinese and everything else to English, then stores the choice globally. A
 manual language switch permanently overrides that initial detection. Switching
 language does not enable or disable a feature, rescan text, load Kuromoji, or
-send a translation request.
+send a translation request. If no valid provider setting exists, the resolved
+interface locale is used once (`zh` -> Bing; everything else -> Google) and the
+result is stored. Later language changes never overwrite the provider.
 
 Persistent settings are limited to:
 
 - `yomi-ruby:locale = "en" | "zh"` globally;
+- `yomi-ruby:translation-provider = "bing" | "google"` globally;
 - `yomi-ruby:auto-origin:<origin>` for Local Kanji Romaji;
 - `yomi-ruby:katakana-origin:<origin>` for Online Katakana English.
 
@@ -80,19 +88,29 @@ persisted.
 | GitHub Raw | Userscript install and automatic update | Downloads the userscript artifact; normal server request metadata applies. |
 | unpkg | Tampermonkey install and update of fixed resources | Downloads twelve immutable `kuromoji@0.1.2` dictionary resources pinned by URL, size, and SHA-256. Page text is not part of these requests. |
 | Google Translate | Only after Online Katakana English is enabled for the exact current origin and a safe text node contains a matched phrase near the viewport | A GET request sends matched, deduplicated katakana phrases in the `q` query parameter. |
+| Bing Translator | Under the same exact-origin feature gate, only when Bing is selected | An anonymous GET fetches translator-page HTML to parse temporary configuration without executing it. Serialized POST requests then send one matched katakana phrase at a time in the form body to the same approved Bing origin. |
 
-The Google request does **not** intentionally include surrounding sentences,
-kanji, hiragana, page titles, page URLs, origins, or browsing history. Because
-the phrases are present in a URL query, they may appear in browser, extension,
-network appliance, proxy, or service-side logs.
+Neither provider request intentionally includes surrounding sentences, kanji,
+hiragana, page titles, page URLs, origins, or browsing history. Google places
+phrases in a URL query, so they may appear in browser, extension, network
+appliance, proxy, or service-side logs. Bing puts each phrase in a POST form
+body, which still discloses it to the browser extension, network path, and Bing.
 
 YomiRuby has no project-owned analytics, telemetry, crash reporting, remote
-logging, tracking identifier, install callback, second translation provider,
-or silent remote fallback. The only allowed translation endpoint is:
+logging, tracking identifier, install callback, or silent cross-provider
+fallback. The only allowed translation routes are:
 
 ```text
 https://translate.googleapis.com/translate_a/single
+https://www.bing.com/translator
+https://www.bing.com/ttranslatev3
+https://cn.bing.com/translator
+https://cn.bing.com/ttranslatev3
 ```
+
+The Google and Bing web endpoints are undocumented, non-contractual,
+best-effort interfaces. Availability, regional reachability, rate limits,
+response shape, correctness, and continued no-key access are not guaranteed.
 
 See [Security and privacy boundary](docs/security-boundary.md), [Network audit](docs/network-audit.md), and [Security reporting](SECURITY.md).
 
@@ -153,4 +171,4 @@ sensitive details in a public Issue. See [CONTRIBUTING.md](CONTRIBUTING.md) and
 YomiRuby-owned code and contributions are licensed under the [MIT License](LICENSE).
 Third-party license and provenance material is recorded in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). No CLA or DCO is required for
-version 0.3.0.
+version 0.4.0.

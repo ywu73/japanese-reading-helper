@@ -52,6 +52,8 @@ const header = `// ==UserScript==
 // @run-at       document-idle
 ${resourceMetadata}
 // @connect      translate.googleapis.com
+// @connect      www.bing.com
+// @connect      cn.bing.com
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceURL
 // @grant        GM_registerMenuCommand

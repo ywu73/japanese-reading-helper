@@ -1,52 +1,92 @@
 # Network audit
 
-## YomiRuby 0.3.0 current local candidate model
+## YomiRuby 0.4.0 current local candidate model
 
-Version 0.3.0 retains the twelve exact `kuromoji@0.1.2` dictionary resources,
+Version 0.4.0 retains the twelve exact `kuromoji@0.1.2` dictionary resources,
 their byte lengths, SHA-256 digests, SRI metadata, and the local-only runtime
 resource reader. The kanji path introduces no new network value and still
 rejects HTTP(S) dictionary URLs at runtime.
 
-The metadata now adds exactly:
+The generated metadata grants exactly:
 
 ```text
 // @connect      translate.googleapis.com
+// @connect      www.bing.com
+// @connect      cn.bing.com
 ```
 
-This permission supports one optional online runtime endpoint:
-`https://translate.googleapis.com/translate_a/single`. The katakana module is
-off for an unconfigured exact origin. After one menu click and successful
-exact-origin setting persistence, it sends GET requests whose parameters are limited to `client`,
-`dt`, `sl`, `tl`, and `q`; `q` contains matched, deduplicated katakana phrases
-joined by newlines. Requests have an explicit timeout, no body, no custom
-headers, one in-flight request maximum, phrase-count and encoded-URL batching,
-and an abort path.
+The katakana module remains off for an unconfigured exact origin. Enabling it
+permits page-derived traffic only to the globally selected provider. A provider
+write must succeed before an active session switches, and a failure never
+resends the phrase to the other provider.
 
-The GET URL exposes the katakana phrases to browser, extension, network,
-proxy, and service logging surfaces. This is a disclosed limitation, not a
-claim of zero data disclosure. The implementation does not add page titles,
-page URLs, origins, browsing history, complete sentences, surrounding kanji or
-hiragana, analytics, a second provider, or a remote fallback.
+### Google adapter
 
-There is no confirmation dialog or separate consent key in 0.3.0. The bilingual
-`Online` / `联网` menu wording discloses the network behavior. Normal operation
-has no loading, success, disable, or language-switch status notice.
+Google is fixed to `https://translate.googleapis.com/translate_a/single`.
+Requests use GET parameters `client`, `dt`, `sl`, `tl`, and `q`; `q` contains
+matched, deduplicated katakana phrases joined by newlines. Requests have an
+explicit timeout, no body, no custom headers, bounded batches, one request in
+flight, a minimum interval, and an abort path. The URL exposes the phrases to
+browser, extension, network, proxy, and service logging surfaces.
 
-Automated injected-request tests assert the exact host/path/parameters,
-deduplication, absence of body/headers, response mapping, batching, serial
-execution, delay, invalid-response rejection, and abort behavior. The build
-audit asserts one exact `@connect`, one fixed translation endpoint, two distinct
-`GM_xmlhttpRequest` call paths, twelve SRI resources, and the absence of
-ordinary `fetch`, `sendBeacon`, page persistence, dynamic evaluation, runtime
-remote dictionary URLs, or extra request call sites.
+### Bing adapter
 
-This is local evidence. No 0.3.0 Tampermonkey installation, extension-background
-capture, reload-persistence test, x.com run, or standalone Katakana Terminator
-migration has been performed. A synthetic two-phrase GET probe using only
-`ゲーム` and `テレビ` was attempted on 2026-07-26; the current execution
-environment returned neither a body nor interpretable HTTP headers within the
-approximately ten-second tool windows. It therefore provides no endpoint
-availability or response-shape evidence.
+Bing initialization anonymously GETs
+`https://www.bing.com/translator`, follows redirects, and accepts the final URL
+only when HTTPS, the exact host is `www.bing.com` or `cn.bing.com`, and the path
+is `/translator`. Returned HTML is bounded and parsed as inert HTML. YomiRuby
+does not execute the page or its JavaScript. It requires exactly one plausible
+`window._G.IG`, exactly one `#rich_tta[data-iid]`, and exactly one strict
+three-item `params_AbusePreventionHelper` tuple containing a positive key,
+bounded token, and page-declared expiry interval.
+
+The temporary origin, IG, IID, key, token, expiry deadline, SFX counter, and
+initialization promise remain in page memory. Translation POSTs target only the
+same approved origin's `/ttranslatev3` path with fixed `isVertical`, `IG`, `IID`,
+`SFX`, `ref`, and `edgepdftranslator` query fields. The form body contains fixed
+`fromLang=ja`, `to=en`, the single matched phrase as `text`, the temporary token
+and key, and the fixed gender-debias request flag. Both GET and POST use
+`anonymous: true`; no Cookie or account header is added.
+
+POST redirect handling is set to `error`, and a successful response is accepted
+only when its reported final URL is byte-for-byte the requested Bing URL. A
+missing, non-integer, zero, or non-2xx HTTP status fails closed before HTML or
+JSON acceptance.
+
+Bing phrases are deduplicated, validated as whole katakana matches, length
+bounded, and sent one per fully serialized request. HTTP 401 invalidates the
+temporary configuration, refetches it once, and retries that phrase once. A
+second 401, HTTP 429, `ShowCaptcha`, timeout, network error, malformed or
+ambiguous config/response, wrong target/language, unchanged text, or non-Latin
+result fails closed. CAPTCHA is not bypassed. There is no identifier rotation,
+cross-provider fallback, spell-check, lookup, examples, telemetry, logging,
+history, ads, or account endpoint.
+
+### Shared disclosure and static evidence
+
+Neither adapter intentionally sends surrounding sentences, kanji, hiragana,
+page titles, page URLs, origins, or browsing history. This is a bounded data
+disclosure, not a zero-disclosure claim: the selected provider receives each
+matched phrase, and ordinary request metadata still exists.
+
+Automated injected-request tests cover exact methods, hosts, paths, fields,
+anonymous mode, deduplication, serialization, response validation, strict Bing
+redirect/config parsing, bounded 401 refresh, fail-closed errors, abort, and
+late-result rejection. The build audit asserts the three exact `@connect`
+entries, fixed routes, three `GM_xmlhttpRequest` call sites (local resource,
+Google, Bing), four-menu order, provider enum/storage key, and the absence of
+ordinary `fetch`, XHR, WebSocket, EventSource, `sendBeacon`, page persistence,
+dynamic evaluation, runtime remote dictionaries, wildcard Bing permission, or
+extra request call sites.
+
+The Google and Bing web endpoints are undocumented, non-contractual,
+best-effort interfaces. Availability, China reachability, redirect behavior,
+rate limits, response formats, correctness, and continued no-key access may
+change. The Bing protocol evidence summarized in the implementation handoff was
+time-specific to 2026-07-26. No 0.4.0 Tampermonkey installation,
+extension-background capture, no-proxy mainland-China reachability check,
+reload-persistence test, x.com run, or standalone Katakana Terminator migration
+has been performed.
 
 ## Version 0.1.2 allowed acquisition
 

@@ -2,6 +2,7 @@ import {
   getFeatureEnabledForOrigin,
   setFeatureEnabledForOrigin,
   setStoredLocale,
+  setStoredTranslationProvider,
 } from "./settings.js";
 
 export async function installYomiRubyControls({
@@ -12,6 +13,10 @@ export async function installYomiRubyControls({
   setValue,
   localizer,
   localePersistenceError = null,
+  translationProvider,
+  translationProviderReadError = null,
+  translationProviderPersistenceError = null,
+  translationProviderFactories,
   kanji,
   katakana,
   showStatus,
@@ -59,6 +64,55 @@ export async function installYomiRubyControls({
   }
 
   let languageMenuId = null;
+  let providerMenuId = null;
+  let providerOperation = 0;
+  let currentProvider = translationProvider;
+  let persistedProvider = translationProvider;
+  const registerProvider = () => {
+    if (providerMenuId != null) {
+      unregisterMenuCommand(providerMenuId);
+    }
+    const nextProvider = currentProvider === "bing" ? "google" : "bing";
+    providerMenuId = registerMenuCommand(
+      localizer.t("menu.translationProvider", { nextProvider }),
+      async () => {
+        const requestedProvider = nextProvider;
+        const requestOperation = ++providerOperation;
+        currentProvider = requestedProvider;
+        refreshMenus();
+        try {
+          await persistence.enqueue(() => setStoredTranslationProvider(setValue, requestedProvider));
+        } catch (error) {
+          if (requestOperation === providerOperation) {
+            currentProvider = persistedProvider;
+            refreshMenus();
+            showStatus(localizer.t("error.translationProviderPersistence", {
+              error: errorMessage(error),
+            }), {
+              duration: 9000,
+              error: true,
+            });
+          }
+          return;
+        }
+        persistedProvider = requestedProvider;
+        if (requestOperation === providerOperation && currentProvider === requestedProvider) {
+          let nextTranslator;
+          try {
+            nextTranslator = translationProviderFactories[requestedProvider]();
+          } catch (error) {
+            katakana.disable();
+            showStatus(localizer.t("error.katakanaStartup", { error: errorMessage(error) }), {
+              duration: 9000,
+              error: true,
+            });
+            return;
+          }
+          await katakana.setTranslator(nextTranslator);
+        }
+      },
+    );
+  };
   let languageOperation = 0;
   let persistedLocale = localizer.getLocale();
   const registerLanguage = () => {
@@ -90,12 +144,29 @@ export async function installYomiRubyControls({
     for (const control of controls) {
       control.register();
     }
+    registerProvider();
     registerLanguage();
   };
   refreshMenus();
   if (localePersistenceError) {
     showStatus(localizer.t("error.localePersistence", {
       error: errorMessage(localePersistenceError),
+    }), {
+      duration: 9000,
+      error: true,
+    });
+  }
+  if (translationProviderPersistenceError) {
+    showStatus(localizer.t("error.translationProviderPersistence", {
+      error: errorMessage(translationProviderPersistenceError),
+    }), {
+      duration: 9000,
+      error: true,
+    });
+  }
+  if (translationProviderReadError) {
+    showStatus(localizer.t("error.translationProviderRead", {
+      error: errorMessage(translationProviderReadError),
     }), {
       duration: 9000,
       error: true,

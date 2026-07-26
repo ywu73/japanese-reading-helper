@@ -25,7 +25,7 @@ This is an old, pinned compatibility candidate. Exact hashes establish byte
 identity with the reviewed package; they do not establish that the upstream is
 currently maintained.
 
-## Katakana matching attribution and translation endpoint
+## Katakana matching attribution and translation providers
 
 YomiRuby's full-width and half-width katakana matching semantics are derived
 from **Katakana Terminator**, copyright 2017-2022 Katakana Terminator
@@ -40,12 +40,25 @@ YomiRuby does not copy Katakana Terminator's periodic whole-page scanner or its
 DOM/request lifecycle. The page coordinator, viewport scheduling, batching,
 cancellation, response validation, ownership, and rollback are project-owned.
 
-After the user enables the exact-origin feature, the katakana module calls the same no-key Google
-Translate endpoint used by the reference script:
-`https://translate.googleapis.com/translate_a/single`. This is an external
-runtime endpoint, not an executable dependency, pinned asset, official paid
-Google Cloud API, or stability guarantee. No API key or second translation
-provider is configured.
+After the user enables the exact-origin feature, the katakana module calls only
+the selected provider. Google uses the same no-key endpoint as the retained
+Katakana Terminator reference:
+`https://translate.googleapis.com/translate_a/single`.
+
+The Bing client is an independent, minimal implementation informed by
+first-party translator-page evidence observed on 2026-07-26 and corroborated
+against `plainheart/bing-translate-api` at immutable commit
+`d2bbd97695db48e7aa707f5bd66c30d862eef29f`. No code or runtime dependency from
+that Node package is bundled. YomiRuby fetches the approved Bing translator
+page anonymously, parses only `IG`, the `#rich_tta` IID, and the
+`params_AbusePreventionHelper` tuple without executing returned code, then sends
+one phrase per anonymous `/ttranslatev3` POST. The reference is MIT-licensed,
+but its license does not authorize Microsoft's web service.
+
+Both providers are external runtime web endpoints, not executable dependencies,
+pinned assets, official contracted APIs, or stability guarantees. Neither uses
+an account, project-owned proxy, Azure resource, or secret key. Failures never
+cross-fallback to the other provider.
 
 ## Development-only dependencies
 

@@ -4,7 +4,7 @@
 
 YomiRuby 是一个隐私边界明确的 Tampermonkey 日语网页阅读辅助工具。它会在具有可靠读音的含汉字词上方显示本地 Hepburn 罗马音，也可以通过可选联网功能，在匹配到的片假名词组上方显示尽力而为的英文注音。
 
-**0.3.0 当前只是经过本地验证的发布候选；桌面 Chrome + Tampermonkey 安装、扩展后台抓包、更新、真实网站和发布门槛尚未完成。**
+**0.4.0 当前只是经过本地验证的发布候选；桌面 Chrome + Tampermonkey 安装、扩展后台抓包、更新、真实网站和发布门槛尚未完成。**
 
 ## 功能
 
@@ -18,7 +18,9 @@ YomiRuby 是一个隐私边界明确的 Tampermonkey 日语网页阅读辅助工
 ### 可选的联网片假名英文
 
 - 只有用户为当前精确 origin 开启后才运行。
-- 只把视口附近匹配到且去重的片假名词组发送给固定的 Google Translate 无密钥端点。
+- 只把视口附近匹配到且去重的片假名词组发送给用户所选的 Google 或 Bing 无密钥网页端点。
+- 简体中文界面首次默认选择 Bing，其他界面语言首次默认选择 Google；已保存或手动选择的服务始终优先。
+- 不在服务之间静默降级；失败时保留原文，不把同一词组转发给另一家服务。
 - 单个翻译失败时保持静默；响应缺失、含糊、无效或不适用时保留原文。
 - 这是实验性、尽力而为的功能，不承诺可用性、准确性，也不承诺还原词语的英文词源。
 
@@ -28,19 +30,20 @@ YomiRuby 是一个隐私边界明确的 Tampermonkey 日语网页阅读辅助工
 
 <https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js>
 
-在 0.3.0 的浏览器与发布门槛正式记录为完成之前，不应把该地址视为已经发布的稳定版本。首个公开版本的兼容目标只包括 **桌面 Google Chrome + Tampermonkey**；其他浏览器和用户脚本管理器尚未验证，不提供兼容承诺。
+在 0.4.0 的浏览器与发布门槛正式记录为完成之前，不应把该地址视为已经发布的稳定版本。首个公开版本的兼容目标只包括 **桌面 Google Chrome + Tampermonkey**；其他浏览器和用户脚本管理器尚未验证，不提供兼容承诺。
 
 YomiRuby 匹配普通 HTTP/HTTPS 页面，并使用 `@noframes`。全站匹配是为了让用户能在任意网站选择开启 YomiRuby，并不表示功能会在所有网站自动运行：**每个未配置的精确 origin 上，两项功能都默认关闭**。
 
 ## 控制与语言
 
-YomiRuby 按“汉字、片假名、语言”的固定顺序注册三个 Tampermonkey 菜单。正常的开启、关闭、启动和语言切换不会出现授权确认框、加载横幅或成功横幅。只有设置写入失败、安全启动失败等可处理错误才会显示临时非模态提示。
+YomiRuby 按“汉字、片假名、翻译服务、语言”的固定顺序注册四个 Tampermonkey 菜单。正常的开启、关闭、启动、服务切换和语言切换不会出现授权确认框、加载横幅或成功横幅。只有设置写入失败、安全启动失败等可处理错误才会显示临时非模态提示。
 
-界面支持英文和简体中文。仅在第一次运行且没有已存语言时，YomiRuby 会读取浏览器首选语言：以 `zh` 开头时映射为简体中文，其他情况映射为英文，然后全局保存。手动切换语言会永久覆盖首次检测结果。语言切换不会改变功能开关、重新扫描文字、加载 Kuromoji 或发送翻译请求。
+界面支持英文和简体中文。仅在第一次运行且没有已存语言时，YomiRuby 会读取浏览器首选语言：以 `zh` 开头时映射为简体中文，其他情况映射为英文，然后全局保存。手动切换语言会永久覆盖首次检测结果。语言切换不会改变功能开关、重新扫描文字、加载 Kuromoji 或发送翻译请求。没有有效服务设置时，YomiRuby 会根据已解析的界面语言一次性选择默认值（`zh` -> Bing，其他 -> Google）并保存；之后切换语言不会覆盖服务设置。
 
 持久化设置仅限：
 
 - 全局 `yomi-ruby:locale = "en" | "zh"`；
+- 全局 `yomi-ruby:translation-provider = "bing" | "google"`；
 - 本地汉字罗马音使用 `yomi-ruby:auto-origin:<origin>`；
 - 联网片假名英文使用 `yomi-ruby:katakana-origin:<origin>`。
 
@@ -53,14 +56,21 @@ YomiRuby 按“汉字、片假名、语言”的固定顺序注册三个 Tamperm
 | GitHub Raw | 安装或自动更新用户脚本时 | 下载用户脚本产物；会产生普通服务器请求元数据。 |
 | unpkg | Tampermonkey 安装或更新固定资源时 | 下载 12 个按 URL、大小和 SHA-256 固定的 `kuromoji@0.1.2` 词典资源；请求不包含页面文字。 |
 | Google Translate | 只有当前精确 origin 已开启联网片假名英文，且安全正文节点的匹配词组进入视口附近后 | GET 请求通过 `q` 查询参数发送匹配并去重的片假名词组。 |
+| Bing Translator | 同一精确 origin 功能门槛下，且用户选择 Bing 时 | 先匿名 GET 翻译页面 HTML，只解析临时配置而不执行页面脚本；随后向同一获准 Bing origin 串行 POST，每次在表单正文中发送一个匹配词组。 |
 
-Google 请求不会主动包含周围句子、汉字、平假名、页面标题、页面 URL、origin 或浏览历史。由于片假名词组位于 URL 查询参数中，它们可能出现在浏览器、扩展、网络设备、代理或服务端日志中。
+两家服务的请求都不会主动包含周围句子、汉字、平假名、页面标题、页面 URL、origin 或浏览历史。Google 把词组放在 URL 查询参数中，因此词组可能进入浏览器、扩展、网络设备、代理或服务端日志；Bing 把每个词组放在 POST 表单正文中，但词组仍会披露给浏览器扩展、网络链路和 Bing。
 
-YomiRuby 不包含项目自有分析、遥测、崩溃上报、远程日志、跟踪标识、安装回调、第二翻译服务或静默远程降级。唯一允许的翻译端点是：
+YomiRuby 不包含项目自有分析、遥测、崩溃上报、远程日志、跟踪标识、安装回调或跨服务静默降级。仅允许以下翻译路由：
 
 ```text
 https://translate.googleapis.com/translate_a/single
+https://www.bing.com/translator
+https://www.bing.com/ttranslatev3
+https://cn.bing.com/translator
+https://cn.bing.com/ttranslatev3
 ```
+
+Google 与 Bing 的网页端点都是未文档化、无合约保证的尽力而为接口；不保证可用性、中国大陆可达性、速率限制、响应结构、正确性或持续无密钥访问。
 
 详细边界参见[安全与隐私边界](docs/security-boundary.md)、[网络审计](docs/network-audit.md)和[安全报告方式](SECURITY.md)。
 
@@ -98,4 +108,4 @@ npm run verify:deterministic-build
 
 普通缺陷与功能讨论使用 GitHub Issues；安全或隐私漏洞必须使用 GitHub Private Vulnerability Reporting，不要在公开 Issue 中发布敏感细节。参见[简体中文贡献指南](CONTRIBUTING.zh-CN.md)和[安全报告方式](SECURITY.md)。
 
-YomiRuby 自有代码与贡献采用 [MIT License](LICENSE)。第三方许可证与来源记录见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。0.3.0 不要求 CLA 或 DCO。
+YomiRuby 自有代码与贡献采用 [MIT License](LICENSE)。第三方许可证与来源记录见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。0.4.0 不要求 CLA 或 DCO。

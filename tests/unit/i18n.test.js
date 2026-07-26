@@ -94,6 +94,29 @@ test("the localizer exposes the settled menu copy and changes language in page m
   assert.equal(localizer.t("menu.language"), "语言 / Language: Switch to English");
 });
 
+test("the localizer renders the opposite translation provider and provider persistence errors", () => {
+  const localizer = createLocalizer("en");
+
+  assert.equal(
+    localizer.t("menu.translationProvider", { nextProvider: "bing" }),
+    "Katakana Translator: Switch to Bing",
+  );
+  assert.equal(
+    localizer.t("error.translationProviderPersistence", { error: "storage denied" }),
+    "Could not save the translation provider: storage denied. The previous provider remains active.",
+  );
+
+  localizer.setLocale("zh");
+  assert.equal(
+    localizer.t("menu.translationProvider", { nextProvider: "google" }),
+    "片假名翻译服务：切换到 Google",
+  );
+  assert.equal(
+    localizer.t("error.translationProviderRead", { error: "storage unavailable" }),
+    "无法读取片假名翻译服务设置，本页使用语言对应的默认服务：storage unavailable",
+  );
+});
+
 test("a missing translation in the active language falls back to the English catalog", () => {
   const localizer = createLocalizer("zh", {
     en: { example: "English fallback" },

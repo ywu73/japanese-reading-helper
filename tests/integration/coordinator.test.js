@@ -181,6 +181,32 @@ test("aborts pending translation and discards a late result after the source tex
   assert.equal(document.querySelector("ruby"), null);
 });
 
+test("provider replacement aborts old work, clears page translations, and rejects a late old-provider result", async () => {
+  const dom = new JSDOM("<main><p>ゲーム</p></main>");
+  const { document } = dom.window;
+  const oldGate = deferred();
+  let oldSignal;
+  const coordinator = immediateCoordinator(dom);
+
+  coordinator.enableKatakana(async (_phrases, { signal }) => {
+    oldSignal = signal;
+    return oldGate.promise;
+  });
+  await waitFor(() => oldSignal);
+
+  coordinator.disableKatakana();
+  coordinator.enableKatakana(async () => new Map([["ゲーム", "new provider"]]));
+  await waitFor(() => document.querySelector('[data-yomi-ruby-feature="katakana"]'));
+
+  assert.equal(oldSignal.aborted, true);
+  assert.equal(document.querySelector("rt").textContent, "new provider");
+
+  oldGate.resolve(new Map([["ゲーム", "stale provider"]]));
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(document.querySelector("rt").textContent, "new provider");
+});
+
 test("discards detached ownership and re-coordinates the same element if the site later reinserts it", async () => {
   const dom = new JSDOM('<main><p id="target">ゲーム</p></main>');
   const { document } = dom.window;

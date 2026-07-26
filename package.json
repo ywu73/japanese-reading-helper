@@ -1,6 +1,6 @@
 {
   "name": "yomi-ruby",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "license": "MIT",
   "description": "YomiRuby, a privacy-bounded Tampermonkey reading aid for local kanji romaji and optional online katakana translation.",

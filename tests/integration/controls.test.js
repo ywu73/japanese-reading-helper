@@ -12,6 +12,7 @@ test("an unconfigured origin exposes independent kanji and katakana commands wit
   assert.deepEqual(harness.menu.labels(), [
     "Enable Kanji Romaji on this site",
     "Enable Online Katakana English on this site",
+    "Katakana Translator: Switch to Bing",
     "语言 / Language: 切换到简体中文",
   ]);
 });
@@ -29,6 +30,7 @@ test("the 0.1.4 origin setting enables only kanji and legacy JRR state remains i
   assert.deepEqual(harness.menu.labels(), [
     "Disable Kanji Romaji on this site",
     "Enable Online Katakana English on this site",
+    "Katakana Translator: Switch to Bing",
     "语言 / Language: 切换到简体中文",
   ]);
   assert.equal(harness.stored.has("yomi-ruby:katakana-origin:https://x.com"), false);
@@ -60,6 +62,7 @@ test("language switching persists globally and immediately re-registers all menu
   assert.deepEqual(harness.menu.labels(), [
     "开启本网站汉字罗马音",
     "开启本网站联网片假名英文",
+    "片假名翻译服务：切换到 Bing",
     "语言 / Language: Switch to English",
   ]);
 });
@@ -72,12 +75,30 @@ test("a first-run locale persistence failure keeps deterministic localized menus
   assert.deepEqual(harness.menu.labels(), [
     "开启本网站汉字罗马音",
     "开启本网站联网片假名英文",
+    "片假名翻译服务：切换到 Bing",
     "语言 / Language: Switch to English",
   ]);
   assert.deepEqual(harness.statuses, [{
     message: "无法保存语言设置：storage denied",
     options: { duration: 9000, error: true },
   }]);
+});
+
+test("provider initialization errors are localized without starting either feature", async () => {
+  const readError = new Error("storage unavailable");
+  const harness = createControlsHarness({
+    locale: "zh",
+    translationProvider: "bing",
+    translationProviderReadError: readError,
+  });
+  await harness.install();
+
+  assert.deepEqual(harness.starts, { kanji: 0, katakana: 0 });
+  assert.deepEqual(harness.statuses, [{
+    message: "无法读取片假名翻译服务设置，本页使用语言对应的默认服务：storage unavailable",
+    options: { duration: 9000, error: true },
+  }]);
+  assert.ok(harness.menu.labels().includes("片假名翻译服务：切换到 Google"));
 });
 
 test("rapid language switches converge on the final requested locale without changing feature state", async () => {
@@ -110,6 +131,7 @@ test("rapid language switches converge on the final requested locale without cha
   assert.deepEqual(harness.menu.labels(), [
     "Enable Kanji Romaji on this site",
     "Enable Online Katakana English on this site",
+    "Katakana Translator: Switch to Bing",
     "语言 / Language: 切换到简体中文",
   ]);
 });
@@ -125,6 +147,7 @@ test("a failed manual language write restores the persisted locale and reports o
   assert.deepEqual(harness.menu.labels(), [
     "Enable Kanji Romaji on this site",
     "Enable Online Katakana English on this site",
+    "Katakana Translator: Switch to Bing",
     "语言 / Language: 切换到简体中文",
   ]);
   assert.deepEqual(harness.statuses, [{
@@ -167,6 +190,7 @@ test("a feature setting read failure keeps that feature off and still exposes al
   assert.deepEqual(harness.menu.labels(), [
     "Enable Kanji Romaji on this site",
     "Enable Online Katakana English on this site",
+    "Katakana Translator: Switch to Bing",
     "语言 / Language: 切换到简体中文",
   ]);
   assert.deepEqual(harness.statuses, [{
@@ -193,6 +217,7 @@ test("disabling one stored feature leaves the other active and changes only its 
   assert.deepEqual(harness.menu.labels(), [
     "Disable Kanji Romaji on this site",
     "Enable Online Katakana English on this site",
+    "Katakana Translator: Switch to Bing",
     "语言 / Language: 切换到简体中文",
   ]);
 });
@@ -292,8 +317,82 @@ test("feature and language operations interleave through one queue and converge 
   assert.deepEqual(harness.menu.labels(), [
     "开启本网站汉字罗马音",
     "开启本网站联网片假名英文",
+    "片假名翻译服务：切换到 Bing",
     "语言 / Language: Switch to English",
   ]);
+});
+
+test("provider switching persists before replacing the translator and stays inert while katakana is off", async () => {
+  const events = [];
+  const harness = createControlsHarness({ events });
+  await harness.install();
+
+  await harness.menu.invoke("Katakana Translator: Switch to Bing");
+
+  assert.equal(harness.stored.get("yomi-ruby:translation-provider"), "bing");
+  assert.deepEqual(events, ["persist:provider:bing", "translator:bing"]);
+  assert.deepEqual(harness.starts, { kanji: 0, katakana: 0 });
+  assert.deepEqual(harness.menu.labels(), [
+    "Enable Kanji Romaji on this site",
+    "Enable Online Katakana English on this site",
+    "Katakana Translator: Switch to Google",
+    "语言 / Language: 切换到简体中文",
+  ]);
+});
+
+test("a failed provider write restores the persisted provider and never replaces the translator", async () => {
+  const harness = createControlsHarness({
+    setValue: async (key) => {
+      if (key === "yomi-ruby:translation-provider") {
+        throw new Error("storage denied");
+      }
+    },
+  });
+  await harness.install();
+
+  await harness.menu.invoke("Katakana Translator: Switch to Bing");
+
+  assert.deepEqual(harness.providerSwitches, []);
+  assert.ok(harness.menu.labels().includes("Katakana Translator: Switch to Bing"));
+  assert.equal(
+    harness.statuses.at(-1).message,
+    "Could not save the translation provider: storage denied. The previous provider remains active.",
+  );
+});
+
+test("rapid provider switches converge on the final persisted provider without stale replacement", async () => {
+  const gates = [deferred(), deferred(), deferred()];
+  const writes = [];
+  const harness = createControlsHarness({
+    setValue: async (key, value) => {
+      const index = writes.length;
+      writes.push([key, value]);
+      await gates[index].promise;
+      harness.stored.set(key, value);
+    },
+  });
+  await harness.install();
+
+  const toBing = harness.menu.invoke("Katakana Translator: Switch to Bing");
+  await waitFor(() => harness.menu.labels().includes("Katakana Translator: Switch to Google"));
+  const toGoogle = harness.menu.invoke("Katakana Translator: Switch to Google");
+  await waitFor(() => harness.menu.labels().includes("Katakana Translator: Switch to Bing"));
+  const finalBing = harness.menu.invoke("Katakana Translator: Switch to Bing");
+
+  gates[0].resolve();
+  await waitFor(() => writes.length === 2);
+  gates[1].resolve();
+  await waitFor(() => writes.length === 3);
+  gates[2].resolve();
+  await Promise.all([toBing, toGoogle, finalBing]);
+
+  assert.deepEqual(writes, [
+    ["yomi-ruby:translation-provider", "bing"],
+    ["yomi-ruby:translation-provider", "google"],
+    ["yomi-ruby:translation-provider", "bing"],
+  ]);
+  assert.equal(harness.stored.get("yomi-ruby:translation-provider"), "bing");
+  assert.deepEqual(harness.providerSwitches, ["bing"]);
 });
 
 function createControlsHarness({
@@ -303,17 +402,26 @@ function createControlsHarness({
   events = [],
   locale = "en",
   localePersistenceError = null,
+  translationProvider = "google",
+  translationProviderReadError = null,
+  translationProviderPersistenceError = null,
 } = {}) {
   const menu = createMenuHarness();
   const starts = { kanji: 0, katakana: 0 };
   const stops = { kanji: 0, katakana: 0 };
   const statuses = [];
+  const providerSwitches = [];
+  const translationProviderFactories = {
+    bing: () => Object.assign(async () => new Map(), { provider: "bing" }),
+    google: () => Object.assign(async () => new Map(), { provider: "google" }),
+  };
   const harness = {
     menu,
     stored,
     starts,
     stops,
     statuses,
+    providerSwitches,
     async install() {
       await installYomiRubyControls({
         origin: "https://x.com",
@@ -324,13 +432,24 @@ function createControlsHarness({
           stored.set(key, value);
           const setting = key === "yomi-ruby:locale"
             ? "locale"
+            : key === "yomi-ruby:translation-provider" ? "provider"
             : key.includes("katakana") ? "katakana" : "kanji";
           events.push(`persist:${setting}:${value}`);
         }),
         localizer: createLocalizer(locale),
         localePersistenceError,
+        translationProvider,
+        translationProviderReadError,
+        translationProviderPersistenceError,
+        translationProviderFactories,
         kanji: featureSession("kanji", starts, stops, events),
-        katakana: featureSession("katakana", starts, stops, events),
+        katakana: {
+          ...featureSession("katakana", starts, stops, events),
+          async setTranslator(translator) {
+            providerSwitches.push(translator.provider);
+            events.push(`translator:${translator.provider}`);
+          },
+        },
         showStatus: (message, options) => statuses.push({ message, options }),
       });
     },

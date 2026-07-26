@@ -1,7 +1,7 @@
 const ENDPOINT = "https://translate.googleapis.com/translate_a/single";
 const LATIN_LETTER = /\p{Script=Latin}/u;
 
-export function createKatakanaTranslationClient({
+export function createGoogleTranslationClient({
   gmRequest,
   maxPhrasesPerRequest = 50,
   maxEncodedUrlLength = 1800,
@@ -41,6 +41,8 @@ export function createKatakanaTranslationClient({
     },
   };
 }
+
+export const createKatakanaTranslationClient = createGoogleTranslationClient;
 
 function buildBatches(phrases, { maxPhrasesPerRequest, maxEncodedUrlLength }) {
   if (!Number.isInteger(maxPhrasesPerRequest) || maxPhrasesPerRequest < 1) {

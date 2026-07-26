@@ -40,6 +40,41 @@ test("katakana-only activation does not load Kuromoji and enables only the coord
   assert.equal(dom.window.document.querySelector("[data-yomi-ruby-status]"), null);
 });
 
+test("translator replacement is inert while katakana is off and restarts the active lifecycle when on", async () => {
+  const dom = new JSDOM("<main>ゲーム</main>");
+  const translators = [];
+  let disables = 0;
+  const firstTranslator = async () => new Map([["ゲーム", "game"]]);
+  const secondTranslator = async () => new Map([["ゲーム", "play"]]);
+  const coordinator = {
+    enableKanji() {},
+    disableKanji() {},
+    enableKatakana(translator) { translators.push(translator); },
+    disableKatakana() { disables += 1; },
+    stop() {},
+  };
+  const session = createYomiRubySession({
+    document: dom.window.document,
+    coordinator,
+    loadTokenizer: async () => ({}),
+    createAnalyzer: () => () => [],
+    translatePhrases: firstTranslator,
+    setTimer: () => 1,
+    clearTimer: () => {},
+  });
+
+  await session.katakana.setTranslator(secondTranslator);
+  assert.deepEqual(translators, []);
+  assert.equal(disables, 0);
+
+  await session.katakana.enable();
+  assert.deepEqual(translators, [secondTranslator]);
+
+  await session.katakana.setTranslator(firstTranslator);
+  assert.deepEqual(translators, [secondTranslator, firstTranslator]);
+  assert.equal(disables, 1);
+});
+
 test("kanji activation stays silent while the verified tokenizer loads and after startup succeeds", async () => {
   const dom = new JSDOM("<main>日本語</main>");
   const tokenizerGate = deferred();
@@ -210,6 +245,46 @@ test("a katakana coordinator startup failure rolls back and reports fail-closed 
     "Could not safely start Online Katakana English: observer unavailable",
   );
   assert.equal(errors.length, 1);
+});
+
+test("an active translator replacement failure stays fail closed without resurrecting the old translator", async () => {
+  const dom = new JSDOM("<main>ゲーム</main>");
+  const firstTranslator = async () => new Map([["ゲーム", "game"]]);
+  const secondTranslator = async () => new Map([["ゲーム", "play"]]);
+  const enabled = [];
+  let disables = 0;
+  const coordinator = {
+    enableKanji() {},
+    disableKanji() {},
+    enableKatakana(translator) {
+      enabled.push(translator);
+      if (translator === secondTranslator) {
+        throw new Error("new observer unavailable");
+      }
+    },
+    disableKatakana() { disables += 1; },
+    stop() {},
+  };
+  const session = createYomiRubySession({
+    document: dom.window.document,
+    coordinator,
+    loadTokenizer: async () => ({}),
+    createAnalyzer: () => () => [],
+    translatePhrases: firstTranslator,
+    setTimer: () => 1,
+    clearTimer: () => {},
+    logger: { error() {} },
+  });
+
+  await session.katakana.enable();
+  await session.katakana.setTranslator(secondTranslator);
+
+  assert.deepEqual(enabled, [firstTranslator, secondTranslator]);
+  assert.equal(disables, 2, "replacement teardown plus failed-start rollback");
+  assert.match(
+    dom.window.document.querySelector('[data-yomi-ruby-status=""]').textContent,
+    /new observer unavailable/u,
+  );
 });
 
 function deferred() {
