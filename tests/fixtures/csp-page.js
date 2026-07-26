@@ -5,5 +5,5 @@ document.querySelector("#csp-add-dynamic").addEventListener("click", () => {
 });
 
 document.querySelector("#csp-disable-yomi-ruby").addEventListener("click", () => {
-  globalThis.__YOMI_RUBY_MENU_COMMANDS__.get("关闭本网站自动标注")?.();
+  globalThis.__YOMI_RUBY_MENU_COMMANDS__.get("关闭本网站汉字罗马音")?.();
 });

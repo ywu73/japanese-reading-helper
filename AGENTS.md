@@ -2,32 +2,38 @@
 
 ## 1. Project Scope
 
-YomiRuby is a privacy-bounded Tampermonkey reading aid. Its current implemented
-module displays Hepburn romaji above Japanese words containing kanji; planned
-Katakana support is not yet an implemented or verified capability.
+YomiRuby is a privacy-bounded Tampermonkey reading aid. Its implemented modules
+display local Hepburn romaji above Japanese words containing kanji and, after
+explicit per-origin consent, online English ruby above matched katakana phrases.
 
 The project inherits the global collaboration rules from
 `/Users/wuyi/.codex/AGENTS.md`. This file adds only project-specific rules.
 
 ## 2. Product Boundaries
 
-- Analyze page text locally in the browser.
-- Never send page text, readings, page titles, or browsing history to a remote
-  translation, reading, AI, analytics, or logging service.
-- Remote access is limited to explicitly approved, immutable program and
-  dictionary assets.
+- Analyze kanji readings and Hepburn romaji locally in the browser.
+- The katakana module may send only matched, deduplicated katakana phrases to
+  `https://translate.googleapis.com/translate_a/single` after explicit consent
+  for the exact current origin. It must never send surrounding sentences,
+  kanji, hiragana, page titles, page URLs, or browsing history.
+- Do not add any other remote translation, reading, AI, analytics, logging, or
+  fallback endpoint without a new explicit product decision.
+- Remote executable program and dictionary assets remain limited to explicitly
+  approved immutable assets.
 - Pin every executable dependency to an exact version and a verified SHA-256
   digest before it can be loaded dynamically.
 - If safe lazy loading cannot be verified in Tampermonkey, stop and report the
   limitation. Do not silently fall back to unverified execution, global eager
   loading, or a remote reading API.
-- Annotate only tokens that contain kanji by default.
+- Keep both features disabled for an unconfigured origin. Annotate only tokens
+  that contain kanji when the kanji module alone is enabled.
 - Use whole-token readings for kanji-kana mixed words.
 - Use Hepburn romaji with macrons by default, such as `kyō` and `Tōkyō`.
 - If the analyzer does not provide a reliable reading, leave the source text
   unchanged. Do not guess from individual kanji.
-- Keep reading caches in page memory only. Persistent storage is limited to
-  explicit per-origin user settings.
+- Keep readings, translations, matches, failures, pending work, and request
+  state in page memory only. Persistent storage is limited to explicit
+  per-origin boolean feature settings.
 
 ## 3. DOM Safety
 

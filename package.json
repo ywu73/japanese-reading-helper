@@ -1,8 +1,8 @@
 {
   "name": "yomi-ruby",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "private": true,
-  "description": "YomiRuby, a privacy-bounded Tampermonkey reading aid currently displaying Hepburn romaji above Japanese words containing kanji.",
+  "description": "YomiRuby, a privacy-bounded Tampermonkey reading aid for local kanji romaji and explicitly authorized katakana translation.",
   "type": "module",
   "engines": {
     "node": "^20.19.0 || ^22.13.0 || >=24.0.0"

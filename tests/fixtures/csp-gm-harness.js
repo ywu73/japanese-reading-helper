@@ -26,8 +26,11 @@ globalThis.GM_unregisterMenuCommand = (id) => {
     menuById.delete(id);
   }
 };
-globalThis.GM_getValue = async () => true;
+globalThis.GM_getValue = async (key, fallback) => key.startsWith("yomi-ruby:auto-origin:")
+  ? true
+  : fallback;
 globalThis.GM_setValue = async () => {};
+globalThis.confirm = () => false;
 globalThis.GM_getResourceURL = (name) => resourceUrlByName.get(name);
 globalThis.GM_xmlhttpRequest = ({ url, onload, onerror, ontimeout, timeout }) => {
   const timer = setTimeout(() => {

@@ -2,9 +2,9 @@
 // @name         YomiRuby
 // @name:zh-CN   日语网页注音助手
 // @namespace    yomi-ruby.local
-// @version      0.1.4
-// @description  Display verified local Hepburn romaji above Japanese words containing kanji.
-// @description:zh-CN  在含汉字的日语词上方显示本地分析得到的平文式罗马音。
+// @version      0.2.0
+// @description  Add local kanji romaji and opt-in katakana English ruby to Japanese web text.
+// @description:zh-CN  为日语网页添加本地汉字罗马音和按网站授权的片假名英文注音。
 // @match        http://*/*
 // @match        https://*/*
 // @noframes
@@ -21,6 +21,7 @@
 // @resource     yomi-ruby-dict-unk-invoke https://unpkg.com/kuromoji@0.1.2/dict/unk_invoke.dat.gz#sha256=6b210889548457c3006913afd12c8b525562255f2709e404604be9614a25e94c
 // @resource     yomi-ruby-dict-unk-map https://unpkg.com/kuromoji@0.1.2/dict/unk_map.dat.gz#sha256=6df12460e5477230bb6fd9641def918b699fc0a8868016b6c9f794488630509b
 // @resource     yomi-ruby-dict-unk-pos https://unpkg.com/kuromoji@0.1.2/dict/unk_pos.dat.gz#sha256=5b183a29f281acc7e0542beca47b83f7985047c0a2d27e78a66f32276be5ad11
+// @connect      translate.googleapis.com
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceURL
 // @grant        GM_registerMenuCommand
@@ -31,6 +32,8 @@
 //
 // Runtime attribution: statically bundled Kuromoji.js 0.1.2 modules, Apache-2.0.
 // Source and license: https://github.com/takuyaa/kuromoji.js/tree/0.1.2
+// Katakana matching semantics derived from Katakana Terminator, MIT.
+// Source: https://github.com/Arnie97/katakana-terminator
 
 (() => {
   var __create = Object.create;
@@ -2630,88 +2633,6 @@
     }
   }
 
-  // src/settings.js
-  var PREFIX = "yomi-ruby:auto-origin:";
-  function originSettingKey(origin) {
-    return `${PREFIX}${origin}`;
-  }
-  async function getAutoRunForOrigin(gmGetValue, origin = location.origin) {
-    return Boolean(await gmGetValue(originSettingKey(origin), false));
-  }
-  async function setAutoRunForOrigin(gmSetValue, enabled, origin = location.origin) {
-    await gmSetValue(originSettingKey(origin), Boolean(enabled));
-  }
-
-  // src/controls.js
-  async function installAnnotationControls({
-    origin,
-    registerMenuCommand,
-    unregisterMenuCommand,
-    getValue,
-    setValue,
-    enable,
-    disable,
-    showStatus
-  }) {
-    let autoEnabled = await getAutoRunForOrigin(getValue, origin);
-    let autoMenuId = null;
-    let operation = 0;
-    let persistenceQueue = Promise.resolve();
-    const persist = (enabled) => {
-      const write = persistenceQueue.then(() => setAutoRunForOrigin(setValue, enabled, origin));
-      persistenceQueue = write.catch(() => {
-      });
-      return write;
-    };
-    const registerAutoMenu = () => {
-      if (autoMenuId != null) {
-        unregisterMenuCommand(autoMenuId);
-      }
-      autoMenuId = registerMenuCommand(
-        `${autoEnabled ? "关闭" : "开启"}本网站自动标注`,
-        async () => {
-          const previousEnabled = autoEnabled;
-          const requestedEnabled = !previousEnabled;
-          const requestOperation = ++operation;
-          autoEnabled = requestedEnabled;
-          registerAutoMenu();
-          if (!requestedEnabled) {
-            disable();
-          }
-          try {
-            await persist(requestedEnabled);
-          } catch (error) {
-            if (requestOperation === operation) {
-              autoEnabled = previousEnabled;
-              registerAutoMenu();
-              if (requestedEnabled) {
-                disable();
-              }
-              showStatus(`无法保存网站自动标注设置：${errorMessage(error)}`, {
-                duration: 9e3,
-                error: true
-              });
-            }
-            return;
-          }
-          if (requestOperation !== operation || autoEnabled !== requestedEnabled) {
-            return;
-          }
-          if (requestedEnabled) {
-            await enable();
-          }
-        }
-      );
-    };
-    registerAutoMenu();
-    if (autoEnabled) {
-      void enable();
-    }
-  }
-  function errorMessage(error) {
-    return error instanceof Error ? error.message : String(error);
-  }
-
   // src/dom.js
   var BLOCKED_TAGS = /* @__PURE__ */ new Set([
     "SCRIPT",
@@ -2737,7 +2658,6 @@
     "AUDIO",
     "VIDEO"
   ]);
-  var generatedOriginals = /* @__PURE__ */ new WeakMap();
   var convertedRubySnapshots = /* @__PURE__ */ new WeakMap();
   var KANA_ONLY2 = /^[\u3041-\u3096\u309d\u309e\u30a1-\u30fa\u30fd\u30feー・\s]+$/u;
   function shouldSkipTextNode(node) {
@@ -2764,35 +2684,6 @@
       }
     }
     return false;
-  }
-  function annotateTextNode(node, segments) {
-    if (shouldSkipTextNode(node) || !segments?.some((segment) => segment.type === "annotation")) {
-      return false;
-    }
-    const document2 = node.ownerDocument;
-    const fragment = document2.createDocumentFragment();
-    for (const segment of segments) {
-      if (segment.type === "text") {
-        fragment.append(document2.createTextNode(segment.text));
-        continue;
-      }
-      const ruby = document2.createElement("ruby");
-      ruby.className = "yomi-ruby-ruby";
-      ruby.setAttribute("data-yomi-ruby-generated", "");
-      ruby.setAttribute("data-yomi-ruby-kana", segment.reading);
-      ruby.tabIndex = 0;
-      generatedOriginals.set(ruby, segment.surface);
-      const base = document2.createElement("span");
-      base.className = "yomi-ruby-base";
-      base.textContent = segment.surface;
-      const rt = document2.createElement("rt");
-      rt.className = "yomi-ruby-rt";
-      rt.textContent = segment.romaji;
-      ruby.append(base, rt);
-      fragment.append(ruby);
-    }
-    node.replaceWith(fragment);
-    return true;
   }
   function convertExistingKanaRuby(root) {
     let converted = 0;
@@ -2832,11 +2723,7 @@
     }
     return converted;
   }
-  function restoreAll(root) {
-    for (const ruby of root.querySelectorAll("ruby[data-yomi-ruby-generated]")) {
-      const original = generatedOriginals.get(ruby) ?? ruby.querySelector(":scope > .yomi-ruby-base")?.textContent ?? "";
-      ruby.replaceWith(root.ownerDocument?.createTextNode(original) ?? root.createTextNode(original));
-    }
+  function restoreConvertedKanaRuby(root) {
     for (const rt of root.querySelectorAll("rt[data-yomi-ruby-converted-rt]")) {
       const snapshot = convertedRubySnapshots.get(rt);
       if (!snapshot) {
@@ -2851,41 +2738,124 @@
       }
       convertedRubySnapshots.delete(rt);
     }
-    root.normalize?.();
   }
   function isKatakanaTerminatorRuby(ruby) {
     return Boolean(ruby.querySelector("rt.katakana-terminator-rt, rt[data-rt]"));
   }
 
-  // src/scheduler.js
-  var PageAnnotator = class {
+  // src/katakana.js
+  var KATAKANA_PHRASE = /[\u30A1-\u30FA\u30FD-\u30FF][\u3099\u309A\u30A1-\u30FF]*[\u3099\u309A\u30A1-\u30FA\u30FC-\u30FF]|[\uFF66-\uFF6F\uFF71-\uFF9D][\uFF65-\uFF9F]*[\uFF66-\uFF9F]/gu;
+  function findKatakanaMatches(text) {
+    if (typeof text !== "string" || text.length === 0) {
+      return [];
+    }
+    return [...text.matchAll(KATAKANA_PHRASE)].map((match) => ({
+      start: match.index,
+      end: match.index + match[0].length,
+      text: match[0]
+    }));
+  }
+
+  // src/coordinator.js
+  var AnnotationCoordinator = class {
     constructor({
       document: document2,
-      analyzeText,
       IntersectionObserver = document2.defaultView?.IntersectionObserver,
       MutationObserver = document2.defaultView?.MutationObserver,
       requestIdleCallback = document2.defaultView?.requestIdleCallback?.bind(document2.defaultView),
       cancelIdleCallback = document2.defaultView?.cancelIdleCallback?.bind(document2.defaultView)
     }) {
+      if (!document2) {
+        throw new TypeError("An AnnotationCoordinator requires a document.");
+      }
       this.document = document2;
-      this.analyzeText = analyzeText;
       this.IntersectionObserver = IntersectionObserver;
       this.MutationObserver = MutationObserver;
       this.requestIdleCallback = requestIdleCallback;
       this.cancelIdleCallback = cancelIdleCallback;
+      this.kanjiAnalyzer = null;
+      this.katakanaTranslator = null;
       this.active = false;
-      this.pending = /* @__PURE__ */ new Set();
+      this.records = /* @__PURE__ */ new Set();
+      this.nodeRecords = /* @__PURE__ */ new WeakMap();
+      this.pendingNodes = /* @__PURE__ */ new Set();
       this.waitingByElement = /* @__PURE__ */ new Map();
+      this.translationCache = /* @__PURE__ */ new Map();
+      this.translationQueue = /* @__PURE__ */ new Set();
+      this.translationActive = false;
+      this.katakanaGeneration = 0;
+      this.katakanaAbortController = null;
+      this.translationFlushScheduled = false;
       this.idleHandle = null;
       this.mutationObserver = null;
       this.intersectionObserver = null;
     }
-    start() {
+    enableKanji(analyzeText) {
+      if (typeof analyzeText !== "function") {
+        throw new TypeError("enableKanji requires an analyzer function.");
+      }
+      this.kanjiAnalyzer = analyzeText;
+      this.#ensureActive();
+      convertExistingKanaRuby(this.document);
+      for (const record of this.records) {
+        this.#processRecord(record);
+      }
+    }
+    disableKanji() {
+      this.kanjiAnalyzer = null;
+      restoreConvertedKanaRuby(this.document);
+      if (!this.katakanaTranslator) {
+        this.#stop();
+        return;
+      }
+      for (const record of this.records) {
+        this.#processRecord(record);
+      }
+    }
+    enableKatakana(translatePhrases) {
+      if (typeof translatePhrases !== "function") {
+        throw new TypeError("enableKatakana requires a translation function.");
+      }
+      this.katakanaGeneration += 1;
+      this.katakanaAbortController?.abort();
+      this.katakanaAbortController = new AbortController();
+      this.katakanaTranslator = translatePhrases;
+      this.translationCache.clear();
+      this.translationQueue.clear();
+      this.#ensureActive();
+      for (const record of this.records) {
+        this.#processRecord(record);
+      }
+    }
+    disableKatakana() {
+      this.katakanaGeneration += 1;
+      this.katakanaAbortController?.abort();
+      this.katakanaAbortController = null;
+      this.katakanaTranslator = null;
+      this.translationCache.clear();
+      this.translationQueue.clear();
+      this.translationFlushScheduled = false;
+      if (!this.kanjiAnalyzer) {
+        this.#stop();
+        return;
+      }
+      for (const record of this.records) {
+        this.#processRecord(record);
+      }
+    }
+    stop() {
+      this.kanjiAnalyzer = null;
+      this.katakanaTranslator = null;
+      this.katakanaGeneration += 1;
+      this.katakanaAbortController?.abort();
+      this.katakanaAbortController = null;
+      this.#stop();
+    }
+    #ensureActive() {
       if (this.active) {
         return;
       }
       this.active = true;
-      convertExistingKanaRuby(this.document);
       if (this.IntersectionObserver) {
         this.intersectionObserver = new this.IntersectionObserver(
           (entries) => this.#onIntersections(entries),
@@ -2900,24 +2870,34 @@
           subtree: true
         });
       }
-      this.scan(this.document.body ?? this.document.documentElement);
+      this.#scan(this.document.body ?? this.document.documentElement);
     }
-    stop() {
+    #stop() {
       if (!this.active) {
+        restoreConvertedKanaRuby(this.document);
         return;
       }
       this.active = false;
       this.mutationObserver?.disconnect();
       this.intersectionObserver?.disconnect();
+      this.mutationObserver = null;
+      this.intersectionObserver = null;
       if (this.idleHandle != null && this.cancelIdleCallback) {
         this.cancelIdleCallback(this.idleHandle);
       }
       this.idleHandle = null;
-      this.pending.clear();
+      this.pendingNodes.clear();
       this.waitingByElement.clear();
-      restoreAll(this.document);
+      this.translationQueue.clear();
+      for (const record of this.records) {
+        this.#restoreRecord(record);
+      }
+      this.records.clear();
+      this.translationCache.clear();
+      restoreConvertedKanaRuby(this.document);
+      this.document.normalize?.();
     }
-    scan(root) {
+    #scan(root) {
       if (!this.active || !root?.isConnected) {
         return;
       }
@@ -2928,22 +2908,24 @@
       if (root.nodeType !== 1 && root.nodeType !== 9 && root.nodeType !== 11) {
         return;
       }
-      convertExistingKanaRuby(root);
+      if (this.kanjiAnalyzer) {
+        convertExistingKanaRuby(root);
+      }
       const walker = this.document.createTreeWalker(
         root,
         this.document.defaultView.NodeFilter.SHOW_TEXT,
-        { acceptNode: (node) => shouldSkipTextNode(node) ? this.document.defaultView.NodeFilter.FILTER_REJECT : this.document.defaultView.NodeFilter.FILTER_ACCEPT }
+        { acceptNode: (node) => shouldSkipTextNode(node) || this.nodeRecords.has(node) ? this.document.defaultView.NodeFilter.FILTER_REJECT : this.document.defaultView.NodeFilter.FILTER_ACCEPT }
       );
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         this.#waitForViewport(node);
       }
     }
     #waitForViewport(node) {
-      if (!this.active || shouldSkipTextNode(node)) {
+      if (!this.active || this.nodeRecords.has(node) || shouldSkipTextNode(node)) {
         return;
       }
       if (!this.intersectionObserver) {
-        this.#enqueue(node);
+        this.#enqueueNode(node);
         return;
       }
       const element = node.parentElement;
@@ -2967,7 +2949,7 @@
         const nodes = this.waitingByElement.get(entry.target) ?? [];
         this.waitingByElement.delete(entry.target);
         for (const node of nodes) {
-          this.#enqueue(node);
+          this.#enqueueNode(node);
         }
       }
     }
@@ -2975,54 +2957,681 @@
       if (!this.active) {
         return;
       }
-      for (const record of records) {
-        if (record.type === "characterData") {
-          this.scan(record.target);
-        } else {
-          for (const node of record.addedNodes) {
-            if (node.nodeType === 1 && node.closest?.("[data-yomi-ruby-generated], [data-yomi-ruby-converted-rt]")) {
-              continue;
-            }
-            this.scan(node);
+      for (const mutation of records) {
+        if (mutation.type === "characterData") {
+          const record = this.nodeRecords.get(mutation.target);
+          if (record) {
+            record.valid = false;
+            continue;
           }
+          this.#scan(mutation.target);
+          continue;
+        }
+        for (const node of mutation.removedNodes) {
+          this.#discardDetachedOwnership(node);
+        }
+        this.#discardDetachedViewportWork();
+        for (const node of mutation.addedNodes) {
+          if (this.nodeRecords.has(node)) {
+            continue;
+          }
+          if (node.nodeType === 1 && node.closest?.("[data-yomi-ruby-generated], [data-yomi-ruby-converted-rt]")) {
+            continue;
+          }
+          this.#scan(node);
         }
       }
     }
-    #enqueue(node) {
-      if (!this.active || !node.isConnected || shouldSkipTextNode(node)) {
+    #discardDetachedOwnership(root) {
+      const records = /* @__PURE__ */ new Set();
+      const stack = [root];
+      while (stack.length) {
+        const node = stack.pop();
+        const record = this.nodeRecords.get(node);
+        if (record) {
+          records.add(record);
+        }
+        stack.push(...node.childNodes);
+      }
+      for (const record of records) {
+        if (record.currentNodes.some((node) => !node.isConnected)) {
+          this.#discardRecord(record);
+        }
+      }
+    }
+    #discardDetachedViewportWork() {
+      for (const node of this.pendingNodes) {
+        if (!node.isConnected) {
+          this.pendingNodes.delete(node);
+        }
+      }
+      for (const [element] of this.waitingByElement) {
+        if (!element.isConnected) {
+          this.intersectionObserver?.unobserve(element);
+          this.waitingByElement.delete(element);
+        }
+      }
+    }
+    #enqueueNode(node) {
+      if (!this.active || !node.isConnected || this.nodeRecords.has(node) || shouldSkipTextNode(node)) {
         return;
       }
-      this.pending.add(node);
+      this.pendingNodes.add(node);
       if (this.idleHandle != null) {
         return;
       }
       if (this.requestIdleCallback) {
-        this.idleHandle = this.requestIdleCallback((deadline) => this.#drain(deadline), { timeout: 500 });
+        this.idleHandle = this.requestIdleCallback((deadline) => this.#drainNodes(deadline), { timeout: 500 });
       } else {
-        this.#drain({ didTimeout: true, timeRemaining: () => 0 });
+        this.#drainNodes({ didTimeout: true, timeRemaining: () => 0 });
       }
     }
-    #drain(deadline) {
+    #drainNodes(deadline) {
       this.idleHandle = null;
       if (!this.active) {
         return;
       }
-      while (this.pending.size && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
-        const node = this.pending.values().next().value;
-        this.pending.delete(node);
-        if (node.isConnected && !shouldSkipTextNode(node)) {
-          annotateTextNode(node, this.analyzeText(node.textContent));
+      while (this.pendingNodes.size && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
+        const node = this.pendingNodes.values().next().value;
+        this.pendingNodes.delete(node);
+        if (node.isConnected && !this.nodeRecords.has(node) && !shouldSkipTextNode(node)) {
+          const record = {
+            originalText: node.textContent,
+            currentNodes: [node],
+            planKey: null,
+            valid: true
+          };
+          this.records.add(record);
+          this.nodeRecords.set(node, record);
+          this.#processRecord(record);
         }
       }
-      if (this.pending.size) {
-        if (this.requestIdleCallback) {
-          this.idleHandle = this.requestIdleCallback((nextDeadline) => this.#drain(nextDeadline), { timeout: 500 });
-        } else {
-          this.#drain({ didTimeout: true, timeRemaining: () => 0 });
-        }
+      if (this.pendingNodes.size && this.requestIdleCallback) {
+        this.idleHandle = this.requestIdleCallback((next) => this.#drainNodes(next), { timeout: 500 });
       }
     }
+    #processRecord(record) {
+      if (!this.#recordIsCurrent(record)) {
+        record.valid = false;
+        return;
+      }
+      const katakanaMatches = this.katakanaTranslator ? findKatakanaMatches(record.originalText) : [];
+      if (this.katakanaTranslator) {
+        this.#queueKatakana(record, katakanaMatches);
+      }
+      const blockedRanges = katakanaMatches.filter((match) => {
+        const status = this.translationCache.get(match.text)?.status;
+        return status === "pending" || status === "success";
+      });
+      const annotations = [];
+      if (this.kanjiAnalyzer) {
+        for (const range of annotationRanges(record.originalText, this.kanjiAnalyzer)) {
+          if (!blockedRanges.some((blocked) => overlaps(range, blocked))) {
+            annotations.push({ ...range, feature: "kanji" });
+          }
+        }
+      }
+      for (const match of katakanaMatches) {
+        const cached = this.translationCache.get(match.text);
+        if (cached?.status === "success") {
+          annotations.push({
+            ...match,
+            feature: "katakana",
+            annotation: cached.translation
+          });
+        }
+      }
+      annotations.sort((left, right) => left.start - right.start || left.end - right.end);
+      this.#renderRecord(record, annotations);
+    }
+    #queueKatakana(record, matches) {
+      let queued = false;
+      for (const match of matches) {
+        let cached = this.translationCache.get(match.text);
+        if (!cached) {
+          cached = { status: "pending", waiters: /* @__PURE__ */ new Set() };
+          this.translationCache.set(match.text, cached);
+          this.translationQueue.add(match.text);
+          queued = true;
+        }
+        if (cached.status === "pending") {
+          cached.waiters.add(record);
+        }
+      }
+      if (queued) {
+        this.#scheduleTranslationFlush();
+      }
+    }
+    #scheduleTranslationFlush() {
+      if (this.translationFlushScheduled || this.translationActive) {
+        return;
+      }
+      this.translationFlushScheduled = true;
+      queueMicrotask(() => {
+        this.translationFlushScheduled = false;
+        void this.#flushTranslations();
+      });
+    }
+    async #flushTranslations() {
+      if (this.translationActive || !this.katakanaTranslator || this.translationQueue.size === 0) {
+        return;
+      }
+      const phrases = [...this.translationQueue];
+      this.translationQueue.clear();
+      const generation = this.katakanaGeneration;
+      const translator = this.katakanaTranslator;
+      const signal = this.katakanaAbortController?.signal;
+      this.translationActive = true;
+      let translations = /* @__PURE__ */ new Map();
+      try {
+        translations = await translator(phrases, { signal });
+      } catch {
+        translations = /* @__PURE__ */ new Map();
+      } finally {
+        this.translationActive = false;
+      }
+      if (generation !== this.katakanaGeneration || translator !== this.katakanaTranslator || signal?.aborted) {
+        if (this.translationQueue.size) {
+          this.#scheduleTranslationFlush();
+        }
+        return;
+      }
+      const affected = /* @__PURE__ */ new Set();
+      for (const phrase of phrases) {
+        const cached = this.translationCache.get(phrase);
+        if (!cached || cached.status !== "pending") {
+          continue;
+        }
+        for (const record of cached.waiters) {
+          affected.add(record);
+        }
+        const translation = translations instanceof Map ? translations.get(phrase) : void 0;
+        this.translationCache.set(phrase, translation ? { status: "success", translation } : { status: "failure" });
+      }
+      for (const record of affected) {
+        this.#processRecord(record);
+      }
+      if (this.translationQueue.size) {
+        this.#scheduleTranslationFlush();
+      }
+    }
+    #renderRecord(record, annotations) {
+      const planKey = JSON.stringify(annotations.map(({ start, end, feature, annotation, reading, romaji }) => [start, end, feature, annotation, reading, romaji]));
+      if (record.planKey === planKey) {
+        return;
+      }
+      const parent = record.currentNodes[0]?.parentNode;
+      if (!parent || record.currentNodes.some((node) => node.parentNode !== parent)) {
+        record.valid = false;
+        return;
+      }
+      const fragment = this.document.createDocumentFragment();
+      let cursor = 0;
+      for (const range of annotations) {
+        if (range.start < cursor) {
+          continue;
+        }
+        if (range.start > cursor) {
+          fragment.append(this.document.createTextNode(record.originalText.slice(cursor, range.start)));
+        }
+        fragment.append(this.#createRuby(range));
+        cursor = range.end;
+      }
+      if (cursor < record.originalText.length) {
+        fragment.append(this.document.createTextNode(record.originalText.slice(cursor)));
+      }
+      if (!fragment.childNodes.length) {
+        fragment.append(this.document.createTextNode(record.originalText));
+      }
+      const nextNodes = [...fragment.childNodes];
+      parent.insertBefore(fragment, record.currentNodes[0]);
+      for (const node of record.currentNodes) {
+        node.remove();
+      }
+      record.currentNodes = nextNodes;
+      record.planKey = planKey;
+      for (const node of nextNodes) {
+        this.nodeRecords.set(node, record);
+      }
+    }
+    #createRuby(range) {
+      const ruby = this.document.createElement("ruby");
+      ruby.className = range.feature === "kanji" ? "yomi-ruby-ruby" : "yomi-ruby-ruby yomi-ruby-katakana-ruby";
+      ruby.setAttribute("data-yomi-ruby-generated", "");
+      ruby.setAttribute("data-yomi-ruby-feature", range.feature);
+      const base = this.document.createElement("span");
+      base.className = "yomi-ruby-base";
+      base.textContent = recordText(range);
+      const rt = this.document.createElement("rt");
+      rt.className = range.feature === "kanji" ? "yomi-ruby-rt" : "yomi-ruby-rt yomi-ruby-katakana-rt";
+      if (range.feature === "kanji") {
+        ruby.setAttribute("data-yomi-ruby-kana", range.reading);
+        ruby.tabIndex = 0;
+        rt.textContent = range.romaji;
+      } else {
+        rt.textContent = range.annotation;
+      }
+      ruby.append(base, rt);
+      return ruby;
+    }
+    #restoreRecord(record) {
+      if (!this.#recordIsCurrent(record)) {
+        return;
+      }
+      const parent = record.currentNodes[0].parentNode;
+      const text = this.document.createTextNode(record.originalText);
+      parent.insertBefore(text, record.currentNodes[0]);
+      for (const node of record.currentNodes) {
+        node.remove();
+      }
+    }
+    #discardRecord(record) {
+      const parent = record.currentNodes[0]?.parentNode;
+      if (parent && record.currentNodes.every((node) => node.parentNode === parent) && record.currentNodes.map(sourceText).join("") === record.originalText) {
+        const text = this.document.createTextNode(record.originalText);
+        parent.insertBefore(text, record.currentNodes[0]);
+        for (const node of record.currentNodes) {
+          node.remove();
+        }
+      }
+      for (const node of record.currentNodes) {
+        this.nodeRecords.delete(node);
+      }
+      for (const cached of this.translationCache.values()) {
+        cached.waiters?.delete(record);
+      }
+      record.valid = false;
+      this.records.delete(record);
+    }
+    #recordIsCurrent(record) {
+      if (!record.valid || record.currentNodes.length === 0) {
+        return false;
+      }
+      const parent = record.currentNodes[0].parentNode;
+      return Boolean(
+        parent && record.currentNodes.every((node) => node.isConnected && node.parentNode === parent) && record.currentNodes.map(sourceText).join("") === record.originalText
+      );
+    }
   };
+  function annotationRanges(text, analyzeText) {
+    let segments;
+    try {
+      segments = analyzeText(text);
+    } catch {
+      return [];
+    }
+    if (!Array.isArray(segments)) {
+      return [];
+    }
+    const ranges = [];
+    let cursor = 0;
+    for (const segment of segments) {
+      const surface = segment?.type === "annotation" ? segment.surface : segment?.text;
+      if (typeof surface !== "string" || text.slice(cursor, cursor + surface.length) !== surface) {
+        return [];
+      }
+      if (segment.type === "annotation") {
+        ranges.push({
+          start: cursor,
+          end: cursor + surface.length,
+          text: surface,
+          reading: segment.reading,
+          romaji: segment.romaji
+        });
+      }
+      cursor += surface.length;
+    }
+    return cursor === text.length ? ranges : [];
+  }
+  function overlaps(left, right) {
+    return left.start < right.end && right.start < left.end;
+  }
+  function recordText(range) {
+    return range.text;
+  }
+  function sourceText(node) {
+    if (node.nodeType === 3) {
+      return node.textContent;
+    }
+    if (node.nodeType === 1 && node.hasAttribute("data-yomi-ruby-generated")) {
+      return node.querySelector(":scope > .yomi-ruby-base")?.textContent ?? "";
+    }
+    return node.textContent ?? "";
+  }
+
+  // src/settings.js
+  var SETTING_PREFIXES = Object.freeze({
+    kanji: "yomi-ruby:auto-origin:",
+    katakana: "yomi-ruby:katakana-origin:"
+  });
+  function originSettingKey(feature, origin) {
+    const prefix = SETTING_PREFIXES[feature];
+    if (!prefix) {
+      throw new TypeError(`Unknown YomiRuby feature: ${feature}`);
+    }
+    return `${prefix}${origin}`;
+  }
+  async function getFeatureEnabledForOrigin(gmGetValue, feature, origin = location.origin) {
+    return Boolean(await gmGetValue(originSettingKey(feature, origin), false));
+  }
+  async function setFeatureEnabledForOrigin(gmSetValue, feature, enabled, origin = location.origin) {
+    await gmSetValue(originSettingKey(feature, origin), Boolean(enabled));
+  }
+
+  // src/controls.js
+  var KATAKANA_CONSENT_MESSAGE = [
+    "开启后，YomiRuby 会把检测到的片假名词组发送给 Google Translate，",
+    "用于显示片假名英文标注。不会发送完整句子、页面标题或网页 URL。",
+    "是否允许当前网站使用此联网功能？"
+  ].join("\n");
+  async function installYomiRubyControls({
+    origin,
+    registerMenuCommand,
+    unregisterMenuCommand,
+    getValue,
+    setValue,
+    confirmKatakana,
+    kanji,
+    katakana,
+    showStatus
+  }) {
+    const persistence = createPersistenceQueue();
+    const definitions = [
+      {
+        feature: "kanji",
+        label: "汉字罗马音",
+        session: kanji
+      },
+      {
+        feature: "katakana",
+        label: "片假名英文",
+        session: katakana,
+        confirmEnable: () => confirmKatakana(KATAKANA_CONSENT_MESSAGE)
+      }
+    ];
+    const controls = [];
+    for (const definition of definitions) {
+      const enabled = await getFeatureEnabledForOrigin(getValue, definition.feature, origin);
+      controls.push(createFeatureControl({
+        ...definition,
+        enabled,
+        origin,
+        registerMenuCommand,
+        unregisterMenuCommand,
+        persist: (nextEnabled) => persistence.enqueue(() => setFeatureEnabledForOrigin(
+          setValue,
+          definition.feature,
+          nextEnabled,
+          origin
+        )),
+        showStatus
+      }));
+    }
+    for (const control of controls) {
+      control.register();
+    }
+    for (const control of controls) {
+      control.startIfEnabled();
+    }
+  }
+  function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  function createPersistenceQueue() {
+    let queue = Promise.resolve();
+    return {
+      enqueue(write) {
+        const result = queue.then(write);
+        queue = result.catch(() => {
+        });
+        return result;
+      }
+    };
+  }
+  function createFeatureControl({
+    feature,
+    label,
+    session: session2,
+    enabled: initialEnabled,
+    registerMenuCommand,
+    unregisterMenuCommand,
+    persist,
+    confirmEnable,
+    showStatus
+  }) {
+    if (!session2 || typeof session2.enable !== "function" || typeof session2.disable !== "function") {
+      throw new TypeError(`The ${feature} feature requires enable and disable functions.`);
+    }
+    let enabled = initialEnabled;
+    let menuId = null;
+    let operation = 0;
+    const register = () => {
+      if (menuId != null) {
+        unregisterMenuCommand(menuId);
+      }
+      menuId = registerMenuCommand(`${enabled ? "关闭" : "开启"}本网站${label}`, async () => {
+        const requestedEnabled = !enabled;
+        if (requestedEnabled && confirmEnable) {
+          let confirmed = false;
+          try {
+            confirmed = Boolean(await confirmEnable());
+          } catch (error) {
+            showStatus(`无法确认${label}联网授权：${errorMessage(error)}`, {
+              duration: 9e3,
+              error: true
+            });
+            return;
+          }
+          if (!confirmed) {
+            return;
+          }
+        }
+        const requestOperation = ++operation;
+        enabled = requestedEnabled;
+        register();
+        if (!requestedEnabled) {
+          session2.disable();
+        }
+        try {
+          await persist(requestedEnabled);
+        } catch (error) {
+          if (requestOperation === operation) {
+            enabled = false;
+            register();
+            session2.disable();
+            const suffix = requestedEnabled ? "功能保持关闭。" : "本页已关闭，但刷新后可能再次启用。";
+            showStatus(`无法保存本网站${label}设置：${errorMessage(error)}。${suffix}`, {
+              duration: 9e3,
+              error: true
+            });
+          }
+          return;
+        }
+        if (requestOperation === operation && enabled === requestedEnabled && requestedEnabled) {
+          await session2.enable();
+        }
+      });
+    };
+    return {
+      register,
+      startIfEnabled() {
+        if (enabled) {
+          void session2.enable();
+        }
+      }
+    };
+  }
+
+  // src/katakana-translation.js
+  var ENDPOINT = "https://translate.googleapis.com/translate_a/single";
+  var LATIN_LETTER = new RegExp("\\p{Script=Latin}", "u");
+  function createKatakanaTranslationClient({
+    gmRequest,
+    maxPhrasesPerRequest = 50,
+    maxEncodedUrlLength = 1800,
+    minimumIntervalMs = 250,
+    requestTimeoutMs = 8e3,
+    sleep = wait
+  }) {
+    if (typeof gmRequest !== "function") {
+      throw new TypeError("A GM_xmlhttpRequest adapter is required for katakana translation.");
+    }
+    return {
+      async translatePhrases(phrases, { signal } = {}) {
+        const uniquePhrases = [...new Set(phrases.filter((phrase) => typeof phrase === "string" && phrase))];
+        if (uniquePhrases.length === 0) {
+          return /* @__PURE__ */ new Map();
+        }
+        const translations = /* @__PURE__ */ new Map();
+        const batches = buildBatches(uniquePhrases, {
+          maxPhrasesPerRequest,
+          maxEncodedUrlLength
+        });
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+          if (batchIndex > 0 && minimumIntervalMs > 0) {
+            await sleep(minimumIntervalMs, { signal });
+          }
+          const batch = batches[batchIndex];
+          const responseText = await requestTranslation(gmRequest, buildUrl(batch), {
+            signal,
+            timeout: requestTimeoutMs
+          });
+          for (const [original, translated] of parseTranslations(responseText, batch)) {
+            translations.set(original, translated);
+          }
+        }
+        return translations;
+      }
+    };
+  }
+  function buildBatches(phrases, { maxPhrasesPerRequest, maxEncodedUrlLength }) {
+    if (!Number.isInteger(maxPhrasesPerRequest) || maxPhrasesPerRequest < 1) {
+      throw new TypeError("maxPhrasesPerRequest must be a positive integer.");
+    }
+    if (!Number.isInteger(maxEncodedUrlLength) || maxEncodedUrlLength < 1) {
+      throw new TypeError("maxEncodedUrlLength must be a positive integer.");
+    }
+    const batches = [];
+    let batch = [];
+    for (const phrase of phrases) {
+      const candidate = [...batch, phrase];
+      if (batch.length > 0 && (candidate.length > maxPhrasesPerRequest || buildUrl(candidate).length > maxEncodedUrlLength)) {
+        batches.push(batch);
+        batch = [];
+      }
+      if (buildUrl([phrase]).length > maxEncodedUrlLength) {
+        continue;
+      }
+      batch.push(phrase);
+    }
+    if (batch.length > 0) {
+      batches.push(batch);
+    }
+    return batches;
+  }
+  function buildUrl(phrases) {
+    const url = new URL(ENDPOINT);
+    url.searchParams.set("client", "gtx");
+    url.searchParams.set("dt", "t");
+    url.searchParams.set("sl", "ja");
+    url.searchParams.set("tl", "en");
+    url.searchParams.set("q", phrases.join("\n"));
+    return url.href;
+  }
+  function requestTranslation(gmRequest, url, { signal, timeout }) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(abortError());
+        return;
+      }
+      let settled = false;
+      let handle;
+      const finish = (callback, value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        signal?.removeEventListener("abort", onAbort);
+        callback(value);
+      };
+      const onAbort = () => {
+        handle?.abort?.();
+        finish(reject, abortError());
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      handle = gmRequest({
+        method: "GET",
+        url,
+        timeout,
+        anonymous: true,
+        onload(response) {
+          if (response?.status && (response.status < 200 || response.status >= 300)) {
+            finish(reject, new Error(`Google Translate returned HTTP ${response.status}.`));
+            return;
+          }
+          finish(resolve, response?.responseText ?? "");
+        },
+        onerror(response) {
+          finish(reject, new Error(response?.statusText || "Google Translate request failed."));
+        },
+        ontimeout() {
+          finish(reject, new Error("Google Translate request timed out."));
+        },
+        onabort() {
+          finish(reject, abortError());
+        }
+      });
+    });
+  }
+  function parseTranslations(responseText, requestedPhrases) {
+    const payload = JSON.parse(responseText);
+    if (!Array.isArray(payload?.[0])) {
+      return /* @__PURE__ */ new Map();
+    }
+    const requested = new Set(requestedPhrases);
+    const translations = /* @__PURE__ */ new Map();
+    const ambiguous = /* @__PURE__ */ new Set();
+    const seen = /* @__PURE__ */ new Set();
+    for (const item of payload[0]) {
+      const translated = typeof item?.[0] === "string" ? item[0].trim() : "";
+      const original = typeof item?.[1] === "string" ? item[1].trim() : "";
+      if (!requested.has(original)) {
+        continue;
+      }
+      if (seen.has(original)) {
+        translations.delete(original);
+        ambiguous.add(original);
+        continue;
+      }
+      seen.add(original);
+      if (!ambiguous.has(original) && translated && translated !== original && LATIN_LETTER.test(translated)) {
+        translations.set(original, translated);
+      }
+    }
+    return translations;
+  }
+  function abortError() {
+    return new DOMException("The katakana translation was aborted.", "AbortError");
+  }
+  function wait(milliseconds, { signal } = {}) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(abortError());
+        return;
+      }
+      const timer = setTimeout(finish, milliseconds);
+      const onAbort = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        reject(abortError());
+      };
+      function finish() {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
 
   // src/styles.js
   var STYLES = `
@@ -3043,8 +3652,8 @@ ruby.yomi-ruby-ruby:focus-visible {
   outline: 2px solid Highlight !important;
   outline-offset: 2px !important;
 }
-ruby.yomi-ruby-ruby:hover::after,
-ruby.yomi-ruby-ruby:focus-visible::after {
+ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:hover::after,
+ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
   content: attr(data-yomi-ruby-kana);
   position: absolute;
   z-index: 2147483647;
@@ -3082,88 +3691,104 @@ ruby.yomi-ruby-ruby:focus-visible::after {
   }
 
   // src/session.js
-  function createAnnotationSession({
+  function createYomiRubySession({
     document: document2,
+    coordinator: coordinator2,
     loadTokenizer,
-    createAnnotator,
+    createAnalyzer: createAnalyzer2,
+    translatePhrases,
     installSessionStyles = installStyles,
     setTimer = globalThis.setTimeout,
     clearTimer = globalThis.clearTimeout,
     logger = globalThis.console
   }) {
-    if (!document2 || typeof loadTokenizer !== "function" || typeof createAnnotator !== "function") {
-      throw new TypeError("A document, tokenizer loader, and annotator factory are required.");
+    if (!document2 || !coordinator2 || typeof loadTokenizer !== "function" || typeof createAnalyzer2 !== "function" || typeof translatePhrases !== "function") {
+      throw new TypeError("A document, coordinator, tokenizer path, and translation path are required.");
     }
-    let annotator = null;
-    let loading = false;
-    let generation = 0;
-    let tokenizerPromise = null;
-    let abortController = null;
+    let kanjiActive = false;
+    let kanjiLoading = false;
+    let katakanaActive = false;
+    let kanjiGeneration = 0;
+    let kanjiAbortController = null;
     let removeStyles = null;
     let statusElement = null;
     let statusTimer = null;
-    async function enable() {
-      if (annotator || loading) {
-        return;
-      }
-      loading = true;
-      const requestGeneration = ++generation;
-      const requestAbortController = new AbortController();
-      abortController = requestAbortController;
-      ensureStyles();
-      showStatus("正在读取并校验 Tampermonkey 预载词典…", { duration: 0 });
-      const requestPromise = Promise.resolve().then(() => loadTokenizer({
-        signal: requestAbortController.signal
-      }));
-      tokenizerPromise = requestPromise;
-      try {
-        const tokenizer = await requestPromise;
-        if (requestGeneration !== generation || tokenizerPromise !== requestPromise) {
+    const kanji = {
+      async enable() {
+        if (kanjiActive || kanjiLoading) {
           return;
         }
-        const nextAnnotator = createAnnotator(tokenizer);
+        kanjiLoading = true;
+        const generation = ++kanjiGeneration;
+        const abortController = new AbortController();
+        kanjiAbortController = abortController;
+        ensureStyles();
+        showStatus("正在读取并校验 Tampermonkey 预载词典…", { duration: 0 });
         try {
-          nextAnnotator.start();
+          const tokenizer = await loadTokenizer({ signal: abortController.signal });
+          if (generation !== kanjiGeneration || abortController.signal.aborted) {
+            return;
+          }
+          coordinator2.enableKanji(createAnalyzer2(tokenizer));
+          kanjiActive = true;
+          showStatus("汉字罗马音已开启。页面文字只在本页内分析。", { duration: 4e3 });
         } catch (error) {
-          nextAnnotator.stop?.();
-          throw error;
-        }
-        annotator = nextAnnotator;
-        showStatus("罗马音标注已开启。页面文字只在本页内分析。", { duration: 4e3 });
-      } catch (error) {
-        if (requestGeneration === generation && !requestAbortController.signal.aborted) {
-          tokenizerPromise = null;
-          showStatus(`无法安全启动：${errorMessage2(error)}`, { duration: 9e3, error: true });
-          scheduleStyleRemoval(9500);
-          logger?.error?.("[YomiRuby] Refused to start", error);
-        }
-      } finally {
-        if (requestGeneration === generation) {
-          loading = false;
-          if (abortController === requestAbortController) {
-            abortController = null;
+          if (generation === kanjiGeneration && !abortController.signal.aborted) {
+            coordinator2.disableKanji();
+            showStatus(`无法安全启动汉字罗马音：${errorMessage2(error)}`, {
+              duration: 9e3,
+              error: true
+            });
+            logger?.error?.("[YomiRuby] Refused to start kanji annotation", error);
           }
-          if (!annotator) {
-            tokenizerPromise = null;
+        } finally {
+          if (generation === kanjiGeneration) {
+            kanjiLoading = false;
+            if (kanjiAbortController === abortController) {
+              kanjiAbortController = null;
+            }
+            removeStylesIfUnused();
           }
         }
+      },
+      disable() {
+        kanjiGeneration += 1;
+        kanjiLoading = false;
+        kanjiAbortController?.abort();
+        kanjiAbortController = null;
+        kanjiActive = false;
+        coordinator2.disableKanji();
+        removeStatus();
+        removeStylesIfUnused();
       }
-    }
-    function disable() {
-      generation += 1;
-      loading = false;
-      abortController?.abort();
-      abortController = null;
-      tokenizerPromise = null;
-      annotator?.stop();
-      annotator = null;
-      removeStatus();
-      removeStyles?.();
-      removeStyles = null;
-    }
-    function ensureStyles() {
-      removeStyles ??= installSessionStyles(document2);
-    }
+    };
+    const katakana = {
+      async enable() {
+        if (katakanaActive) {
+          return;
+        }
+        ensureStyles();
+        try {
+          coordinator2.enableKatakana(translatePhrases);
+          katakanaActive = true;
+          showStatus("片假名英文已开启。匹配词组会发送给 Google Translate。", { duration: 5e3 });
+        } catch (error) {
+          katakanaActive = false;
+          coordinator2.disableKatakana();
+          showStatus(`无法安全启动片假名英文：${errorMessage2(error)}`, {
+            duration: 9e3,
+            error: true
+          });
+          logger?.error?.("[YomiRuby] Refused to start katakana annotation", error);
+        }
+      },
+      disable() {
+        katakanaActive = false;
+        coordinator2.disableKatakana();
+        removeStatus();
+        removeStylesIfUnused();
+      }
+    };
     function showStatus(message, { duration = 4e3, error = false } = {}) {
       removeStatus();
       ensureStyles();
@@ -3177,6 +3802,9 @@ ruby.yomi-ruby-ruby:focus-visible::after {
         statusTimer = setTimer(removeStatus, duration);
       }
     }
+    function ensureStyles() {
+      removeStyles ??= installSessionStyles(document2);
+    }
     function removeStatus() {
       if (statusTimer != null) {
         clearTimer(statusTimer);
@@ -3184,20 +3812,27 @@ ruby.yomi-ruby-ruby:focus-visible::after {
       statusTimer = null;
       statusElement?.remove();
       statusElement = null;
-      if (!annotator && !loading) {
+      removeStylesIfUnused();
+    }
+    function removeStylesIfUnused() {
+      if (!kanjiActive && !kanjiLoading && !katakanaActive && !statusElement) {
         removeStyles?.();
         removeStyles = null;
       }
     }
-    function scheduleStyleRemoval(delay) {
-      setTimer(() => {
-        if (!annotator && !loading && !statusElement) {
-          removeStyles?.();
-          removeStyles = null;
-        }
-      }, delay);
+    function stop() {
+      kanjiGeneration += 1;
+      kanjiAbortController?.abort();
+      kanjiAbortController = null;
+      kanjiActive = false;
+      kanjiLoading = false;
+      katakanaActive = false;
+      coordinator2.stop();
+      removeStatus();
+      removeStyles?.();
+      removeStyles = null;
     }
-    return { enable, disable, showStatus };
+    return { kanji, katakana, showStatus, stop };
   }
   function errorMessage2(error) {
     return error instanceof Error ? error.message : String(error);
@@ -3380,29 +4015,33 @@ ruby.yomi-ruby-ruby:focus-visible::after {
   }
 
   // src/main.js
-  var session = createAnnotationSession({
+  var coordinator = new AnnotationCoordinator({ document });
+  var katakanaTranslation = createKatakanaTranslationClient({
+    gmRequest: GM_xmlhttpRequest
+  });
+  var session = createYomiRubySession({
     document,
+    coordinator,
     loadTokenizer: ({ signal }) => loadVerifiedKuromoji({
       manifest: runtime_manifest_default,
       getResourceUrl: GM_getResourceURL,
       gmRequest: GM_xmlhttpRequest,
       signal
     }),
-    createAnnotator: (tokenizer) => new PageAnnotator({
-      document,
-      analyzeText: createAnalyzer(tokenizer)
-    })
+    createAnalyzer,
+    translatePhrases: katakanaTranslation.translatePhrases
   });
   void bootstrap();
   async function bootstrap() {
-    await installAnnotationControls({
+    await installYomiRubyControls({
       origin: location.origin,
       registerMenuCommand: GM_registerMenuCommand,
       unregisterMenuCommand: GM_unregisterMenuCommand,
       getValue: GM_getValue,
       setValue: GM_setValue,
-      enable: session.enable,
-      disable: session.disable,
+      confirmKatakana: (message) => globalThis.confirm(message),
+      kanji: session.kanji,
+      katakana: session.katakana,
       showStatus: session.showStatus
     });
   }

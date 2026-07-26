@@ -1,93 +1,112 @@
 import { installStyles } from "./styles.js";
 
-export function createAnnotationSession({
+export function createYomiRubySession({
   document,
+  coordinator,
   loadTokenizer,
-  createAnnotator,
+  createAnalyzer,
+  translatePhrases,
   installSessionStyles = installStyles,
   setTimer = globalThis.setTimeout,
   clearTimer = globalThis.clearTimeout,
   logger = globalThis.console,
 }) {
-  if (!document || typeof loadTokenizer !== "function" || typeof createAnnotator !== "function") {
-    throw new TypeError("A document, tokenizer loader, and annotator factory are required.");
+  if (
+    !document
+    || !coordinator
+    || typeof loadTokenizer !== "function"
+    || typeof createAnalyzer !== "function"
+    || typeof translatePhrases !== "function"
+  ) {
+    throw new TypeError("A document, coordinator, tokenizer path, and translation path are required.");
   }
 
-  let annotator = null;
-  let loading = false;
-  let generation = 0;
-  let tokenizerPromise = null;
-  let abortController = null;
+  let kanjiActive = false;
+  let kanjiLoading = false;
+  let katakanaActive = false;
+  let kanjiGeneration = 0;
+  let kanjiAbortController = null;
   let removeStyles = null;
   let statusElement = null;
   let statusTimer = null;
 
-  async function enable() {
-    if (annotator || loading) {
-      return;
-    }
-    loading = true;
-    const requestGeneration = ++generation;
-    const requestAbortController = new AbortController();
-    abortController = requestAbortController;
-    ensureStyles();
-    showStatus("正在读取并校验 Tampermonkey 预载词典…", { duration: 0 });
-
-    const requestPromise = Promise.resolve().then(() => loadTokenizer({
-      signal: requestAbortController.signal,
-    }));
-    tokenizerPromise = requestPromise;
-
-    try {
-      const tokenizer = await requestPromise;
-      if (requestGeneration !== generation || tokenizerPromise !== requestPromise) {
+  const kanji = {
+    async enable() {
+      if (kanjiActive || kanjiLoading) {
         return;
       }
-      const nextAnnotator = createAnnotator(tokenizer);
+      kanjiLoading = true;
+      const generation = ++kanjiGeneration;
+      const abortController = new AbortController();
+      kanjiAbortController = abortController;
+      ensureStyles();
+      showStatus("正在读取并校验 Tampermonkey 预载词典…", { duration: 0 });
       try {
-        nextAnnotator.start();
+        const tokenizer = await loadTokenizer({ signal: abortController.signal });
+        if (generation !== kanjiGeneration || abortController.signal.aborted) {
+          return;
+        }
+        coordinator.enableKanji(createAnalyzer(tokenizer));
+        kanjiActive = true;
+        showStatus("汉字罗马音已开启。页面文字只在本页内分析。", { duration: 4000 });
       } catch (error) {
-        nextAnnotator.stop?.();
-        throw error;
-      }
-      annotator = nextAnnotator;
-      showStatus("罗马音标注已开启。页面文字只在本页内分析。", { duration: 4000 });
-    } catch (error) {
-      if (requestGeneration === generation && !requestAbortController.signal.aborted) {
-        tokenizerPromise = null;
-        showStatus(`无法安全启动：${errorMessage(error)}`, { duration: 9000, error: true });
-        scheduleStyleRemoval(9500);
-        logger?.error?.("[YomiRuby] Refused to start", error);
-      }
-    } finally {
-      if (requestGeneration === generation) {
-        loading = false;
-        if (abortController === requestAbortController) {
-          abortController = null;
+        if (generation === kanjiGeneration && !abortController.signal.aborted) {
+          coordinator.disableKanji();
+          showStatus(`无法安全启动汉字罗马音：${errorMessage(error)}`, {
+            duration: 9000,
+            error: true,
+          });
+          logger?.error?.("[YomiRuby] Refused to start kanji annotation", error);
         }
-        if (!annotator) {
-          tokenizerPromise = null;
+      } finally {
+        if (generation === kanjiGeneration) {
+          kanjiLoading = false;
+          if (kanjiAbortController === abortController) {
+            kanjiAbortController = null;
+          }
+          removeStylesIfUnused();
         }
       }
-    }
-  }
+    },
+    disable() {
+      kanjiGeneration += 1;
+      kanjiLoading = false;
+      kanjiAbortController?.abort();
+      kanjiAbortController = null;
+      kanjiActive = false;
+      coordinator.disableKanji();
+      removeStatus();
+      removeStylesIfUnused();
+    },
+  };
 
-  function disable() {
-    generation += 1;
-    loading = false;
-    abortController?.abort();
-    abortController = null;
-    tokenizerPromise = null;
-    annotator?.stop();
-    annotator = null;
-    removeStatus();
-    removeStyles?.();
-    removeStyles = null;
-  }
-
-  function ensureStyles() {
-    removeStyles ??= installSessionStyles(document);
-  }
+  const katakana = {
+    async enable() {
+      if (katakanaActive) {
+        return;
+      }
+      ensureStyles();
+      try {
+        coordinator.enableKatakana(translatePhrases);
+        katakanaActive = true;
+        showStatus("片假名英文已开启。匹配词组会发送给 Google Translate。", { duration: 5000 });
+      } catch (error) {
+        katakanaActive = false;
+        coordinator.disableKatakana();
+        showStatus(`无法安全启动片假名英文：${errorMessage(error)}`, {
+          duration: 9000,
+          error: true,
+        });
+        logger?.error?.("[YomiRuby] Refused to start katakana annotation", error);
+      }
+    },
+    disable() {
+      katakanaActive = false;
+      coordinator.disableKatakana();
+      removeStatus();
+      removeStylesIfUnused();
+    },
+  };
 
   function showStatus(message, { duration = 4000, error = false } = {}) {
     removeStatus();
@@ -103,6 +122,10 @@ export function createAnnotationSession({
     }
   }
 
+  function ensureStyles() {
+    removeStyles ??= installSessionStyles(document);
+  }
+
   function removeStatus() {
     if (statusTimer != null) {
       clearTimer(statusTimer);
@@ -110,22 +133,30 @@ export function createAnnotationSession({
     statusTimer = null;
     statusElement?.remove();
     statusElement = null;
-    if (!annotator && !loading) {
+    removeStylesIfUnused();
+  }
+
+  function removeStylesIfUnused() {
+    if (!kanjiActive && !kanjiLoading && !katakanaActive && !statusElement) {
       removeStyles?.();
       removeStyles = null;
     }
   }
 
-  function scheduleStyleRemoval(delay) {
-    setTimer(() => {
-      if (!annotator && !loading && !statusElement) {
-        removeStyles?.();
-        removeStyles = null;
-      }
-    }, delay);
+  function stop() {
+    kanjiGeneration += 1;
+    kanjiAbortController?.abort();
+    kanjiAbortController = null;
+    kanjiActive = false;
+    kanjiLoading = false;
+    katakanaActive = false;
+    coordinator.stop();
+    removeStatus();
+    removeStyles?.();
+    removeStyles = null;
   }
 
-  return { enable, disable, showStatus };
+  return { kanji, katakana, showStatus, stop };
 }
 
 function errorMessage(error) {

@@ -16,8 +16,8 @@ ruby.yomi-ruby-ruby:focus-visible {
   outline: 2px solid Highlight !important;
   outline-offset: 2px !important;
 }
-ruby.yomi-ruby-ruby:hover::after,
-ruby.yomi-ruby-ruby:focus-visible::after {
+ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:hover::after,
+ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
   content: attr(data-yomi-ruby-kana);
   position: absolute;
   z-index: 2147483647;

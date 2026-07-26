@@ -5,7 +5,6 @@ const BLOCKED_TAGS = new Set([
   "BUTTON", "CODE", "PRE", "KBD", "SAMP", "RUBY", "RT", "RP", "SVG", "MATH", "CANVAS",
   "AUDIO", "VIDEO",
 ]);
-const generatedOriginals = new WeakMap();
 const convertedRubySnapshots = new WeakMap();
 const KANA_ONLY = /^[\u3041-\u3096\u309d\u309e\u30a1-\u30fa\u30fd\u30feー・\s]+$/u;
 
@@ -38,38 +37,6 @@ export function shouldSkipTextNode(node) {
     }
   }
   return false;
-}
-
-export function annotateTextNode(node, segments) {
-  if (shouldSkipTextNode(node) || !segments?.some((segment) => segment.type === "annotation")) {
-    return false;
-  }
-
-  const document = node.ownerDocument;
-  const fragment = document.createDocumentFragment();
-  for (const segment of segments) {
-    if (segment.type === "text") {
-      fragment.append(document.createTextNode(segment.text));
-      continue;
-    }
-    const ruby = document.createElement("ruby");
-    ruby.className = "yomi-ruby-ruby";
-    ruby.setAttribute("data-yomi-ruby-generated", "");
-    ruby.setAttribute("data-yomi-ruby-kana", segment.reading);
-    ruby.tabIndex = 0;
-    generatedOriginals.set(ruby, segment.surface);
-
-    const base = document.createElement("span");
-    base.className = "yomi-ruby-base";
-    base.textContent = segment.surface;
-    const rt = document.createElement("rt");
-    rt.className = "yomi-ruby-rt";
-    rt.textContent = segment.romaji;
-    ruby.append(base, rt);
-    fragment.append(ruby);
-  }
-  node.replaceWith(fragment);
-  return true;
 }
 
 export function convertExistingKanaRuby(root) {
@@ -114,12 +81,7 @@ export function convertExistingKanaRuby(root) {
   return converted;
 }
 
-export function restoreAll(root) {
-  for (const ruby of root.querySelectorAll("ruby[data-yomi-ruby-generated]")) {
-    const original = generatedOriginals.get(ruby) ?? ruby.querySelector(":scope > .yomi-ruby-base")?.textContent ?? "";
-    ruby.replaceWith(root.ownerDocument?.createTextNode(original) ?? root.createTextNode(original));
-  }
-
+export function restoreConvertedKanaRuby(root) {
   for (const rt of root.querySelectorAll("rt[data-yomi-ruby-converted-rt]")) {
     const snapshot = convertedRubySnapshots.get(rt);
     if (!snapshot) {
@@ -134,7 +96,6 @@ export function restoreAll(root) {
     }
     convertedRubySnapshots.delete(rt);
   }
-  root.normalize?.();
 }
 
 function isKatakanaTerminatorRuby(ruby) {

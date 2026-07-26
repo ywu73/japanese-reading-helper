@@ -2,174 +2,186 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 
-import { createAnnotationSession } from "../../src/session.js";
-import { PageAnnotator } from "../../src/scheduler.js";
+import { createYomiRubySession } from "../../src/session.js";
 
-test("disabling during tokenizer loading prevents the stale result from starting annotation", async () => {
-  const dom = new JSDOM("<main>日本語</main>");
-  const tokenizerGate = deferred();
-  let annotatorStarts = 0;
-  const session = createAnnotationSession({
-    document: dom.window.document,
-    loadTokenizer: async () => tokenizerGate.promise,
-    createAnnotator: () => ({
-      start() {
-        annotatorStarts += 1;
-      },
-      stop() {},
-    }),
-  });
-
-  const enabling = session.enable();
-  session.disable();
-  tokenizerGate.resolve({ id: "stale-tokenizer" });
-  await enabling;
-
-  assert.equal(annotatorStarts, 0);
-  assert.equal(dom.window.document.querySelector("[data-yomi-ruby-status]"), null);
-  assert.equal(dom.window.document.querySelector("[data-yomi-ruby-style]"), null);
-});
-
-test("disable releases the active tokenizer session so re-enable constructs a fresh one", async () => {
-  const dom = new JSDOM("<main>日本語</main>");
-  const loadedTokenizers = [];
-  const startedTokenizers = [];
-  let stopCount = 0;
-  const session = createAnnotationSession({
-    document: dom.window.document,
-    loadTokenizer: async () => {
-      const tokenizer = { id: loadedTokenizers.length + 1 };
-      loadedTokenizers.push(tokenizer);
-      return tokenizer;
+test("katakana-only activation does not load Kuromoji and enables only the coordinator translation path", async () => {
+  const dom = new JSDOM("<main>ゲーム</main>");
+  let tokenizerLoads = 0;
+  let kanjiEnables = 0;
+  let katakanaEnables = 0;
+  const coordinator = {
+    enableKanji() { kanjiEnables += 1; },
+    disableKanji() {},
+    enableKatakana(translate) {
+      katakanaEnables += 1;
+      assert.equal(typeof translate, "function");
     },
-    createAnnotator: (tokenizer) => ({
-      start() {
-        startedTokenizers.push(tokenizer);
-      },
-      stop() {
-        stopCount += 1;
-      },
-    }),
+    disableKatakana() {},
+    stop() {},
+  };
+  const session = createYomiRubySession({
+    document: dom.window.document,
+    coordinator,
+    loadTokenizer: async () => {
+      tokenizerLoads += 1;
+      return {};
+    },
+    createAnalyzer: () => () => [],
+    translatePhrases: async () => new Map(),
     setTimer: () => 1,
     clearTimer: () => {},
   });
 
-  await session.enable();
-  session.disable();
-  await session.enable();
+  await session.katakana.enable();
 
-  assert.deepEqual(startedTokenizers.map(({ id }) => id), [1, 2]);
-  assert.equal(stopCount, 1);
+  assert.equal(tokenizerLoads, 0);
+  assert.equal(kanjiEnables, 0);
+  assert.equal(katakanaEnables, 1);
 });
 
-test("an initialization failure remains fail closed and a later enable retries", async () => {
-  const dom = new JSDOM("<main>日本語</main>");
-  const errors = [];
-  let loadCount = 0;
-  let startCount = 0;
-  const session = createAnnotationSession({
+test("shared styles remain until both feature sessions are disabled", async () => {
+  const dom = new JSDOM("<main>日本語とゲーム</main>");
+  const coordinator = coordinatorHarness();
+  const session = createYomiRubySession({
     document: dom.window.document,
+    coordinator,
+    loadTokenizer: async () => ({ id: "tokenizer" }),
+    createAnalyzer: () => () => [],
+    translatePhrases: async () => new Map(),
+    setTimer: () => 1,
+    clearTimer: () => {},
+  });
+
+  await session.kanji.enable();
+  await session.katakana.enable();
+  session.kanji.disable();
+
+  assert.ok(dom.window.document.querySelector("[data-yomi-ruby-style]"));
+  assert.equal(coordinator.kanjiDisables, 1);
+  assert.equal(coordinator.katakanaDisables, 0);
+
+  session.katakana.disable();
+  assert.equal(dom.window.document.querySelector("[data-yomi-ruby-style]"), null);
+});
+
+test("disabling during tokenizer loading invalidates the late kanji result while katakana stays active", async () => {
+  const dom = new JSDOM("<main>型ゲーム</main>");
+  const tokenizerGate = deferred();
+  const coordinator = coordinatorHarness();
+  const session = createYomiRubySession({
+    document: dom.window.document,
+    coordinator,
+    loadTokenizer: async () => tokenizerGate.promise,
+    createAnalyzer: () => () => [],
+    translatePhrases: async () => new Map(),
+    setTimer: () => 1,
+    clearTimer: () => {},
+  });
+
+  await session.katakana.enable();
+  const enablingKanji = session.kanji.enable();
+  session.kanji.disable();
+  tokenizerGate.resolve({ id: "stale" });
+  await enablingKanji;
+
+  assert.equal(coordinator.kanjiEnables, 0);
+  assert.equal(coordinator.katakanaEnables, 1);
+  assert.ok(dom.window.document.querySelector("[data-yomi-ruby-style]"));
+});
+
+test("kanji disable releases the tokenizer path so a later enable loads a fresh analyzer", async () => {
+  const dom = new JSDOM("<main>日本語</main>");
+  const coordinator = coordinatorHarness();
+  const loaded = [];
+  const analyzed = [];
+  const session = createYomiRubySession({
+    document: dom.window.document,
+    coordinator,
+    loadTokenizer: async () => {
+      const tokenizer = { id: loaded.length + 1 };
+      loaded.push(tokenizer);
+      return tokenizer;
+    },
+    createAnalyzer: (tokenizer) => {
+      analyzed.push(tokenizer);
+      return () => [];
+    },
+    translatePhrases: async () => new Map(),
+    setTimer: () => 1,
+    clearTimer: () => {},
+  });
+
+  await session.kanji.enable();
+  session.kanji.disable();
+  await session.kanji.enable();
+
+  assert.deepEqual(loaded.map(({ id }) => id), [1, 2]);
+  assert.deepEqual(analyzed.map(({ id }) => id), [1, 2]);
+  assert.equal(coordinator.kanjiEnables, 2);
+});
+
+test("a failed kanji load remains fail closed and a later enable retries without stopping katakana", async () => {
+  const dom = new JSDOM("<main>型ゲーム</main>");
+  const coordinator = coordinatorHarness();
+  let loadCount = 0;
+  const errors = [];
+  const session = createYomiRubySession({
+    document: dom.window.document,
+    coordinator,
     loadTokenizer: async () => {
       loadCount += 1;
       if (loadCount === 1) {
         throw new Error("dictionary unavailable");
       }
-      return { id: "retry-tokenizer" };
+      return { id: "retry" };
     },
-    createAnnotator: () => ({
-      start() {
-        startCount += 1;
-      },
-      stop() {},
-    }),
+    createAnalyzer: () => () => [],
+    translatePhrases: async () => new Map(),
     setTimer: () => 1,
     clearTimer: () => {},
     logger: { error: (...values) => errors.push(values) },
   });
 
-  await session.enable();
-  assert.equal(startCount, 0);
-  assert.equal(dom.window.document.querySelector("[data-yomi-ruby-status]").getAttribute("role"), "alert");
+  await session.katakana.enable();
+  await session.kanji.enable();
+  assert.equal(coordinator.kanjiEnables, 0);
+  assert.equal(coordinator.katakanaEnables, 1);
 
-  await session.enable();
+  await session.kanji.enable();
   assert.equal(loadCount, 2);
-  assert.equal(startCount, 1);
+  assert.equal(coordinator.kanjiEnables, 1);
+  assert.equal(coordinator.katakanaDisables, 0);
   assert.equal(errors.length, 1);
 });
 
-test("an annotator start failure rolls back partial work and permits retry", async () => {
-  const dom = new JSDOM("<main>日本語</main>");
-  const { document } = dom.window;
-  let factoryCount = 0;
-  let successfulStarts = 0;
-  let failedStopCount = 0;
-  const session = createAnnotationSession({
-    document,
-    loadTokenizer: async () => ({ id: "tokenizer" }),
-    createAnnotator: () => {
-      factoryCount += 1;
-      if (factoryCount === 1) {
-        return {
-          start() {
-            document.body.setAttribute("data-yomi-ruby-partial", "");
-            throw new Error("observer startup failed");
-          },
-          stop() {
-            failedStopCount += 1;
-            document.body.removeAttribute("data-yomi-ruby-partial");
-          },
-        };
-      }
-      return {
-        start() {
-          successfulStarts += 1;
-        },
-        stop() {},
-      };
-    },
+test("a katakana coordinator startup failure rolls back and reports fail-closed status", async () => {
+  const dom = new JSDOM("<main>ゲーム</main>");
+  const errors = [];
+  let disableCount = 0;
+  const coordinator = {
+    enableKanji() {},
+    disableKanji() {},
+    enableKatakana() { throw new Error("observer unavailable"); },
+    disableKatakana() { disableCount += 1; },
+    stop() {},
+  };
+  const session = createYomiRubySession({
+    document: dom.window.document,
+    coordinator,
+    loadTokenizer: async () => ({}),
+    createAnalyzer: () => () => [],
+    translatePhrases: async () => new Map(),
     setTimer: () => 1,
     clearTimer: () => {},
-    logger: { error: () => {} },
+    logger: { error: (...values) => errors.push(values) },
   });
 
-  await session.enable();
-  assert.equal(failedStopCount, 1);
-  assert.equal(document.body.hasAttribute("data-yomi-ruby-partial"), false);
+  await session.katakana.enable();
 
-  await session.enable();
-  assert.equal(factoryCount, 2);
-  assert.equal(successfulStarts, 1);
-});
-
-test("disabling an active session restores the DOM and stops later dynamic annotation", async () => {
-  const dom = new JSDOM("<main><p>日本語</p></main>");
-  const { document, MutationObserver } = dom.window;
-  const session = createAnnotationSession({
-    document,
-    loadTokenizer: async () => ({ id: "tokenizer" }),
-    createAnnotator: () => new PageAnnotator({
-      document,
-      analyzeText: analyze,
-      IntersectionObserver: undefined,
-      MutationObserver,
-      requestIdleCallback: undefined,
-      cancelIdleCallback: undefined,
-    }),
-    setTimer: () => 1,
-    clearTimer: () => {},
-  });
-
-  await session.enable();
-  assert.equal(document.querySelector("rt").textContent, "nihongo");
-
-  session.disable();
-  assert.equal(document.querySelector("main").innerHTML, "<p>日本語</p>");
-  assert.equal(document.querySelector("[data-yomi-ruby-status]"), null);
-  assert.equal(document.querySelector("[data-yomi-ruby-style]"), null);
-
-  document.querySelector("main").insertAdjacentHTML("beforeend", "<p>日本語</p>");
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(document.querySelectorAll("rt").length, 0);
+  assert.equal(disableCount, 1);
+  assert.equal(dom.window.document.querySelector("[data-yomi-ruby-status]").getAttribute("role"), "alert");
+  assert.match(dom.window.document.querySelector("[data-yomi-ruby-status]").textContent, /无法安全启动片假名英文/u);
+  assert.equal(errors.length, 1);
 });
 
 function deferred() {
@@ -180,8 +192,16 @@ function deferred() {
   return { promise, resolve };
 }
 
-function analyze(text) {
-  return text === "日本語"
-    ? [{ type: "annotation", surface: text, reading: "ニホンゴ", romaji: "nihongo" }]
-    : [{ type: "text", text }];
+function coordinatorHarness() {
+  return {
+    kanjiEnables: 0,
+    kanjiDisables: 0,
+    katakanaEnables: 0,
+    katakanaDisables: 0,
+    enableKanji() { this.kanjiEnables += 1; },
+    disableKanji() { this.kanjiDisables += 1; },
+    enableKatakana() { this.katakanaEnables += 1; },
+    disableKatakana() { this.katakanaDisables += 1; },
+    stop() {},
+  };
 }

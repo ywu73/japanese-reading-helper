@@ -25,6 +25,26 @@ This is an old, pinned compatibility candidate. Exact hashes establish byte
 identity with the reviewed package; they do not establish that the upstream is
 currently maintained.
 
+## Katakana matching attribution and translation endpoint
+
+YomiRuby's full-width and half-width katakana matching semantics are derived
+from **Katakana Terminator**, copyright 2017-2021 Katakana Terminator
+Contributors, licensed MIT:
+
+- source: <https://github.com/Arnie97/katakana-terminator>
+- reviewed reference copy: `docs/片假名终结者.js`
+
+YomiRuby does not copy Katakana Terminator's periodic whole-page scanner or its
+DOM/request lifecycle. The page coordinator, viewport scheduling, batching,
+cancellation, response validation, ownership, and rollback are project-owned.
+
+After exact-origin consent, the katakana module calls the same no-key Google
+Translate endpoint used by the reference script:
+`https://translate.googleapis.com/translate_a/single`. This is an external
+runtime endpoint, not an executable dependency, pinned asset, official paid
+Google Cloud API, or stability guarantee. No API key or second translation
+provider is configured.
+
 ## Development-only dependencies
 
 | Package | Version | License | Purpose |

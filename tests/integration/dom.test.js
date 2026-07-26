@@ -3,38 +3,10 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
 import {
-  annotateTextNode,
   convertExistingKanaRuby,
-  restoreAll,
+  restoreConvertedKanaRuby,
   shouldSkipTextNode,
 } from "../../src/dom.js";
-
-const analyze = (text) => {
-  if (text === "日本語を勉強する") {
-    return [
-      { type: "annotation", surface: "日本語", reading: "ニホンゴ", romaji: "nihongo" },
-      { type: "text", text: "を" },
-      { type: "annotation", surface: "勉強", reading: "ベンキョウ", romaji: "benkyō" },
-      { type: "text", text: "する" },
-    ];
-  }
-  return [{ type: "text", text }];
-};
-
-test("adds attributable ruby and restores the exact original text", () => {
-  const dom = new JSDOM(`<p id="target">日本語を勉強する</p>`);
-  const { document } = dom.window;
-  const p = document.querySelector("#target");
-
-  assert.equal(annotateTextNode(p.firstChild, analyze(p.textContent)), true);
-  assert.equal(p.querySelectorAll("ruby[data-yomi-ruby-generated]").length, 2);
-  assert.equal(p.querySelector("rt.yomi-ruby-rt").textContent, "nihongo");
-  assert.equal(p.querySelector("ruby").getAttribute("data-yomi-ruby-kana"), "ニホンゴ");
-  assert.equal(p.querySelector("ruby").tabIndex, 0);
-
-  restoreAll(document);
-  assert.equal(p.innerHTML, "日本語を勉強する");
-});
 
 test("converts author kana ruby, preserves Katakana Terminator, and restores attributes", () => {
   const dom = new JSDOM(`
@@ -52,7 +24,7 @@ test("converts author kana ruby, preserves Katakana Terminator, and restores att
   assert.equal(authorRt.getAttribute("title"), "reading");
   assert.equal(document.querySelector("#kt rt").textContent, "タイプ");
 
-  restoreAll(document);
+  restoreConvertedKanaRuby(document);
   assert.equal(document.querySelector("main").innerHTML, originalMarkup);
 });
 
@@ -84,35 +56,4 @@ test("skips YomiRuby status UI", () => {
   const statusText = document.querySelector("[data-yomi-ruby-status]").firstChild;
 
   assert.equal(shouldSkipTextNode(statusText), true);
-});
-
-test("preserves nested inline markup while annotating eligible text nodes", () => {
-  const dom = new JSDOM(`<p id="nested">前<strong>日本語</strong>後</p>`);
-  const { document } = dom.window;
-  const strong = document.querySelector("strong");
-  const originalOuter = strong.outerHTML;
-
-  annotateTextNode(strong.firstChild, [{
-    type: "annotation",
-    surface: "日本語",
-    reading: "ニホンゴ",
-    romaji: "nihongo",
-  }]);
-  assert.equal(document.querySelector("#nested").firstChild.textContent, "前");
-  assert.equal(strong.tagName, "STRONG");
-  restoreAll(document);
-  assert.equal(strong.outerHTML, originalOuter);
-});
-
-test("repeat annotation and rollback cycles remain isolated", () => {
-  const dom = new JSDOM(`<p>日本語を勉強する</p>`);
-  const { document } = dom.window;
-  const p = document.querySelector("p");
-
-  for (let cycle = 0; cycle < 3; cycle += 1) {
-    annotateTextNode(p.firstChild, analyze(p.textContent));
-    assert.equal(p.querySelectorAll("[data-yomi-ruby-generated]").length, 2);
-    restoreAll(document);
-    assert.equal(p.innerHTML, "日本語を勉強する");
-  }
 });

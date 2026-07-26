@@ -1,284 +1,194 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { installAnnotationControls } from "../../src/controls.js";
+import { installYomiRubyControls } from "../../src/controls.js";
 
-test("an unconfigured origin exposes one enable command without starting annotation", async () => {
-  const menu = createMenuHarness();
-  let enableCount = 0;
+test("an unconfigured origin exposes independent kanji and katakana commands without starting either module", async () => {
+  const harness = createControlsHarness();
+  await harness.install();
 
-  await installAnnotationControls({
-    origin: "https://example.com",
-    registerMenuCommand: menu.register,
-    unregisterMenuCommand: menu.unregister,
-    getValue: async (_key, fallback) => fallback,
-    setValue: async () => {},
-    enable: async () => {
-      enableCount += 1;
-    },
-    disable: () => {},
-    showStatus: () => {},
-  });
-
-  assert.equal(enableCount, 0);
-  assert.deepEqual(menu.labels(), ["开启本网站自动标注"]);
+  assert.deepEqual(harness.starts, { kanji: 0, katakana: 0 });
+  assert.deepEqual(harness.menu.labels(), [
+    "开启本网站汉字罗马音",
+    "开启本网站片假名英文",
+  ]);
 });
 
-test("a legacy JRR origin preference is not inherited after the identity cutover", async () => {
-  const menu = createMenuHarness();
-  const stored = new Map([["jrr:auto-origin:https://x.com", true]]);
-  let enableCount = 0;
-
-  await installAnnotationControls({
-    origin: "https://x.com",
-    registerMenuCommand: menu.register,
-    unregisterMenuCommand: menu.unregister,
-    getValue: async (key, fallback) => stored.get(key) ?? fallback,
-    setValue: async (key, value) => stored.set(key, value),
-    enable: async () => {
-      enableCount += 1;
-    },
-    disable: () => {},
-    showStatus: () => {},
+test("the 0.1.4 origin setting enables only kanji and legacy JRR state remains ignored", async () => {
+  const harness = createControlsHarness({
+    stored: new Map([
+      ["yomi-ruby:auto-origin:https://x.com", true],
+      ["jrr:auto-origin:https://x.com", true],
+    ]),
   });
+  await harness.install();
 
-  assert.equal(enableCount, 0);
-  assert.equal(stored.has("yomi-ruby:auto-origin:https://x.com"), false);
-  assert.deepEqual(menu.labels(), ["开启本网站自动标注"]);
+  assert.deepEqual(harness.starts, { kanji: 1, katakana: 0 });
+  assert.deepEqual(harness.menu.labels(), [
+    "关闭本网站汉字罗马音",
+    "开启本网站片假名英文",
+  ]);
+  assert.equal(harness.stored.has("yomi-ruby:katakana-origin:https://x.com"), false);
 });
 
-test("enabling automatic annotation persists the origin and starts the current page immediately", async () => {
-  const menu = createMenuHarness();
-  const stored = new Map();
-  let enableCount = 0;
-
-  await installAnnotationControls({
-    origin: "https://x.com",
-    registerMenuCommand: menu.register,
-    unregisterMenuCommand: menu.unregister,
-    getValue: async (key, fallback) => stored.get(key) ?? fallback,
-    setValue: async (key, value) => stored.set(key, value),
-    enable: async () => {
-      enableCount += 1;
+test("cancelling first-use katakana consent neither persists nor starts the network feature", async () => {
+  const confirmations = [];
+  const harness = createControlsHarness({
+    confirmKatakana(message) {
+      confirmations.push(message);
+      return false;
     },
-    disable: () => {},
-    showStatus: () => {},
   });
+  await harness.install();
 
-  await menu.invoke("开启本网站自动标注");
+  await harness.menu.invoke("开启本网站片假名英文");
 
-  assert.equal(stored.get("yomi-ruby:auto-origin:https://x.com"), true);
-  assert.equal(enableCount, 1);
-  assert.deepEqual(menu.labels(), ["关闭本网站自动标注"]);
+  assert.equal(confirmations.length, 1);
+  assert.match(confirmations[0], /片假名词组.*Google Translate/su);
+  assert.match(confirmations[0], /不会发送完整句子、页面标题或网页 URL/u);
+  assert.equal(harness.stored.has("yomi-ruby:katakana-origin:https://x.com"), false);
+  assert.equal(harness.starts.katakana, 0);
+  assert.ok(harness.menu.labels().includes("开启本网站片假名英文"));
 });
 
-test("the menu switches to disable before page initialization finishes", async () => {
-  const menu = createMenuHarness();
+test("confirmed katakana consent is persisted before the current page starts translating", async () => {
+  const events = [];
+  const harness = createControlsHarness({ events });
+  await harness.install();
+
+  await harness.menu.invoke("开启本网站片假名英文");
+
+  assert.equal(harness.stored.get("yomi-ruby:katakana-origin:https://x.com"), true);
+  assert.deepEqual(events, ["confirm", "persist:katakana:true", "enable:katakana"]);
+  assert.ok(harness.menu.labels().includes("关闭本网站片假名英文"));
+});
+
+test("a failed katakana enable write stays fail closed and restores its enable command", async () => {
+  const harness = createControlsHarness({
+    setValue: async () => { throw new Error("storage denied"); },
+  });
+  await harness.install();
+
+  await harness.menu.invoke("开启本网站片假名英文");
+
+  assert.equal(harness.starts.katakana, 0);
+  assert.equal(harness.stops.katakana, 1);
+  assert.ok(harness.menu.labels().includes("开启本网站片假名英文"));
+  assert.match(harness.statuses.at(-1).message, /功能保持关闭/u);
+  assert.equal(harness.statuses.at(-1).options.error, true);
+});
+
+test("disabling one stored feature leaves the other active and changes only its own exact-origin setting", async () => {
+  const harness = createControlsHarness({
+    stored: new Map([
+      ["yomi-ruby:auto-origin:https://x.com", true],
+      ["yomi-ruby:katakana-origin:https://x.com", true],
+    ]),
+  });
+  await harness.install();
+
+  await harness.menu.invoke("关闭本网站片假名英文");
+
+  assert.deepEqual(harness.starts, { kanji: 1, katakana: 1 });
+  assert.deepEqual(harness.stops, { kanji: 0, katakana: 1 });
+  assert.equal(harness.stored.get("yomi-ruby:auto-origin:https://x.com"), true);
+  assert.equal(harness.stored.get("yomi-ruby:katakana-origin:https://x.com"), false);
+  assert.deepEqual(harness.menu.labels(), [
+    "关闭本网站汉字罗马音",
+    "开启本网站片假名英文",
+  ]);
+});
+
+test("rapid confirmed katakana enable then disable leaves persistence and runtime in the final off state", async () => {
   const enableGate = deferred();
-  let enableStarted = false;
-
-  await installAnnotationControls({
-    origin: "https://x.com",
-    registerMenuCommand: menu.register,
-    unregisterMenuCommand: menu.unregister,
-    getValue: async (_key, fallback) => fallback,
-    setValue: async () => {},
-    enable: async () => {
-      enableStarted = true;
-      await enableGate.promise;
+  const disableGate = deferred();
+  const harness = createControlsHarness({
+    setValue: async (key, value) => {
+      if (key.includes("katakana")) {
+        await (value ? enableGate.promise : disableGate.promise);
+      }
+      harness.stored.set(key, value);
     },
-    disable: () => {},
-    showStatus: () => {},
   });
+  await harness.install();
 
-  const activation = menu.invoke("开启本网站自动标注");
-  await waitFor(() => enableStarted);
-
-  assert.equal(enableStarted, true);
-  assert.deepEqual(menu.labels(), ["关闭本网站自动标注"]);
-
+  const enabling = harness.menu.invoke("开启本网站片假名英文");
+  await waitFor(() => harness.menu.labels().includes("关闭本网站片假名英文"));
+  const disabling = harness.menu.invoke("关闭本网站片假名英文");
   enableGate.resolve();
-  await activation;
-});
-
-test("the menu reflects the requested state while persistence is still pending", async () => {
-  const menu = createMenuHarness();
-  const persistenceGate = deferred();
-  let enableCount = 0;
-
-  await installAnnotationControls({
-    origin: "https://x.com",
-    registerMenuCommand: menu.register,
-    unregisterMenuCommand: menu.unregister,
-    getValue: async (_key, fallback) => fallback,
-    setValue: async () => persistenceGate.promise,
-    enable: async () => {
-      enableCount += 1;
-    },
-    disable: () => {},
-    showStatus: () => {},
-  });
-
-  const activation = menu.invoke("开启本网站自动标注");
-
-  assert.deepEqual(menu.labels(), ["关闭本网站自动标注"]);
-  assert.equal(enableCount, 0, "annotation waits for successful persistence");
-
-  persistenceGate.resolve();
-  await activation;
-  assert.equal(enableCount, 1);
-});
-
-test("disabling during initialization tears down immediately while persistence is pending", async () => {
-  const menu = createMenuHarness();
-  const enableGate = deferred();
-  const disablePersistenceGate = deferred();
-  let disableCount = 0;
-
-  await installAnnotationControls({
-    origin: "https://x.com",
-    registerMenuCommand: menu.register,
-    unregisterMenuCommand: menu.unregister,
-    getValue: async (_key, fallback) => fallback,
-    setValue: async (_key, value) => value ? undefined : disablePersistenceGate.promise,
-    enable: async () => enableGate.promise,
-    disable: () => {
-      disableCount += 1;
-    },
-    showStatus: () => {},
-  });
-
-  const activation = menu.invoke("开启本网站自动标注");
   await Promise.resolve();
-  await Promise.resolve();
-  const deactivation = menu.invoke("关闭本网站自动标注");
-
-  assert.deepEqual(menu.labels(), ["开启本网站自动标注"]);
-  assert.equal(disableCount, 1);
-
-  disablePersistenceGate.resolve();
-  await deactivation;
-  enableGate.resolve();
-  await activation;
-  assert.deepEqual(menu.labels(), ["开启本网站自动标注"]);
-});
-
-test("a failed enable-setting write stays fail closed and restores the enable command", async () => {
-  const menu = createMenuHarness();
-  const statuses = [];
-  let enableCount = 0;
-  let disableCount = 0;
-
-  await installAnnotationControls({
-    origin: "https://x.com",
-    registerMenuCommand: menu.register,
-    unregisterMenuCommand: menu.unregister,
-    getValue: async (_key, fallback) => fallback,
-    setValue: async () => {
-      throw new Error("storage denied");
-    },
-    enable: async () => {
-      enableCount += 1;
-    },
-    disable: () => {
-      disableCount += 1;
-    },
-    showStatus: (message, options) => statuses.push({ message, options }),
-  });
-
-  await menu.invoke("开启本网站自动标注");
-
-  assert.deepEqual(menu.labels(), ["开启本网站自动标注"]);
-  assert.equal(enableCount, 0);
-  assert.equal(disableCount, 1);
-  assert.match(statuses.at(-1).message, /无法保存网站自动标注设置/u);
-  assert.equal(statuses.at(-1).options.error, true);
-});
-
-test("rapid enable then disable leaves persistence and the single menu in the final state", async () => {
-  const menu = createMenuHarness();
-  const enablePersistenceGate = deferred();
-  const disablePersistenceGate = deferred();
-  let persisted = false;
-  let enableCount = 0;
-
-  await installAnnotationControls({
-    origin: "https://x.com",
-    registerMenuCommand: menu.register,
-    unregisterMenuCommand: menu.unregister,
-    getValue: async (_key, fallback) => fallback,
-    setValue: async (_key, value) => {
-      await (value ? enablePersistenceGate.promise : disablePersistenceGate.promise);
-      persisted = value;
-    },
-    enable: async () => {
-      enableCount += 1;
-    },
-    disable: () => {},
-    showStatus: () => {},
-  });
-
-  const enabling = menu.invoke("开启本网站自动标注");
-  const disabling = menu.invoke("关闭本网站自动标注");
-  disablePersistenceGate.resolve();
-  await Promise.resolve();
-  enablePersistenceGate.resolve();
+  disableGate.resolve();
   await Promise.all([enabling, disabling]);
 
-  assert.equal(persisted, false);
-  assert.equal(enableCount, 0);
-  assert.deepEqual(menu.labels(), ["开启本网站自动标注"]);
+  assert.equal(harness.stored.get("yomi-ruby:katakana-origin:https://x.com"), false);
+  assert.equal(harness.starts.katakana, 0);
+  assert.equal(harness.stops.katakana, 1);
+  assert.ok(harness.menu.labels().includes("开启本网站片假名英文"));
 });
 
-test("disabling automatic annotation persists the origin and rolls back the current page immediately", async () => {
+function createControlsHarness({
+  stored = new Map(),
+  confirmKatakana,
+  setValue,
+  events = [],
+} = {}) {
   const menu = createMenuHarness();
-  const stored = new Map([["yomi-ruby:auto-origin:https://x.com", true]]);
-  let enableCount = 0;
-  let disableCount = 0;
-  let statusCount = 0;
-
-  await installAnnotationControls({
-    origin: "https://x.com",
-    registerMenuCommand: menu.register,
-    unregisterMenuCommand: menu.unregister,
-    getValue: async (key, fallback) => stored.get(key) ?? fallback,
-    setValue: async (key, value) => stored.set(key, value),
-    enable: async () => {
-      enableCount += 1;
+  const starts = { kanji: 0, katakana: 0 };
+  const stops = { kanji: 0, katakana: 0 };
+  const statuses = [];
+  const harness = {
+    menu,
+    stored,
+    starts,
+    stops,
+    statuses,
+    async install() {
+      await installYomiRubyControls({
+        origin: "https://x.com",
+        registerMenuCommand: menu.register,
+        unregisterMenuCommand: menu.unregister,
+        getValue: async (key, fallback) => stored.get(key) ?? fallback,
+        setValue: setValue ?? (async (key, value) => {
+          stored.set(key, value);
+          events.push(`persist:${key.includes("katakana") ? "katakana" : "kanji"}:${value}`);
+        }),
+        confirmKatakana: confirmKatakana ?? (() => {
+          events.push("confirm");
+          return true;
+        }),
+        kanji: featureSession("kanji", starts, stops, events),
+        katakana: featureSession("katakana", starts, stops, events),
+        showStatus: (message, options) => statuses.push({ message, options }),
+      });
     },
-    disable: () => {
-      disableCount += 1;
-    },
-    showStatus: () => {
-      statusCount += 1;
-    },
-  });
+  };
+  return harness;
+}
 
-  assert.equal(enableCount, 1, "stored automatic mode starts during bootstrap");
-  await menu.invoke("关闭本网站自动标注");
-
-  assert.equal(stored.get("yomi-ruby:auto-origin:https://x.com"), false);
-  assert.equal(disableCount, 1);
-  assert.equal(statusCount, 0, "successful disable leaves no project status UI behind");
-  assert.deepEqual(menu.labels(), ["开启本网站自动标注"]);
-});
+function featureSession(feature, starts, stops, events) {
+  return {
+    async enable() {
+      starts[feature] += 1;
+      events.push(`enable:${feature}`);
+    },
+    disable() {
+      stops[feature] += 1;
+      events.push(`disable:${feature}`);
+    },
+  };
+}
 
 function createMenuHarness() {
   let nextId = 1;
   const commands = new Map();
-
   return {
     register(label, callback) {
       const id = nextId++;
       commands.set(id, { label, callback });
       return id;
     },
-    unregister(id) {
-      commands.delete(id);
-    },
-    labels() {
-      return [...commands.values()].map(({ label }) => label);
-    },
+    unregister(id) { commands.delete(id); },
+    labels() { return [...commands.values()].map(({ label }) => label); },
     async invoke(label) {
       const command = [...commands.values()].find((entry) => entry.label === label);
       assert.ok(command, `Menu command not found: ${label}`);
@@ -289,14 +199,12 @@ function createMenuHarness() {
 
 function deferred() {
   let resolve;
-  const promise = new Promise((fulfill) => {
-    resolve = fulfill;
-  });
+  const promise = new Promise((fulfill) => { resolve = fulfill; });
   return { promise, resolve };
 }
 
 async function waitFor(predicate) {
-  for (let attempt = 0; attempt < 20 && !predicate(); attempt += 1) {
+  for (let attempt = 0; attempt < 30 && !predicate(); attempt += 1) {
     await Promise.resolve();
   }
 }

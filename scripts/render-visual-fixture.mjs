@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 
 import { createAnalyzer } from "../src/analyzer.js";
-import { PageAnnotator } from "../src/scheduler.js";
+import { AnnotationCoordinator } from "../src/coordinator.js";
 import { installStyles } from "../src/styles.js";
 import { loadVerifiedKuromoji } from "../src/vendor-loader.js";
 
@@ -35,15 +35,14 @@ const tokenizer = await loadVerifiedKuromoji({
 
 const dom = new JSDOM(source, { pretendToBeVisual: true });
 installStyles(dom.window.document);
-const annotator = new PageAnnotator({
+const coordinator = new AnnotationCoordinator({
   document: dom.window.document,
-  analyzeText: createAnalyzer(tokenizer),
   IntersectionObserver: undefined,
   MutationObserver: undefined,
   requestIdleCallback: undefined,
   cancelIdleCallback: undefined,
 });
-annotator.start();
+coordinator.enableKanji(createAnalyzer(tokenizer));
 dom.window.document.title = "YomiRuby annotated visual fixture";
 
 const outputPath = path.join(projectRoot, "work/prototypes/annotated-preview.html");
