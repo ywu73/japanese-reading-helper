@@ -1,8 +1,9 @@
 {
   "name": "yomi-ruby",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "YomiRuby, a privacy-bounded Tampermonkey reading aid for local kanji romaji and explicitly authorized katakana translation.",
+  "license": "MIT",
+  "description": "YomiRuby, a privacy-bounded Tampermonkey reading aid for local kanji romaji and optional online katakana translation.",
   "type": "module",
   "engines": {
     "node": "^20.19.0 || ^22.13.0 || >=24.0.0"
@@ -15,7 +16,8 @@
     "test:feasibility": "node work/prototypes/verify-kuromoji-loader.mjs",
     "test:resource-prototype": "node work/prototypes/verify-preloaded-resource-roundtrip.mjs",
     "test:loader-real": "node scripts/verify-local-loader.mjs",
-    "verify:vendor": "node scripts/verify-vendor-assets.mjs"
+    "verify:vendor": "node scripts/verify-vendor-assets.mjs",
+    "verify:deterministic-build": "node scripts/verify-deterministic-build.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.1",

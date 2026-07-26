@@ -1,0 +1,39 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Run full repository checks
+        run: npm run check
+
+      - name: Verify pinned vendor assets
+        run: npm run verify:vendor
+
+      - name: Verify deterministic build
+        run: npm run verify:deterministic-build
+
+      - name: Verify tracked userscript is current
+        run: git diff --exit-code -- dist/yomi-ruby.user.js

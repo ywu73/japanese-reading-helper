@@ -2,9 +2,14 @@
 // @name         YomiRuby
 // @name:zh-CN   日语网页注音助手
 // @namespace    yomi-ruby.local
-// @version      0.2.0
-// @description  Add local kanji romaji and opt-in katakana English ruby to Japanese web text.
-// @description:zh-CN  为日语网页添加本地汉字罗马音和按网站授权的片假名英文注音。
+// @version      0.3.0
+// @description  Add local Kanji Romaji and optional online Katakana English ruby to Japanese web text.
+// @description:zh-CN  为日语网页添加本地汉字罗马音和可选的联网片假名英文注音。
+// @homepageURL  https://github.com/ywu73/yomi-ruby
+// @supportURL   https://github.com/ywu73/yomi-ruby/issues
+// @downloadURL  https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js
+// @updateURL    https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js
+// @license      MIT
 // @match        http://*/*
 // @match        https://*/*
 // @noframes
@@ -30,10 +35,412 @@
 // @grant        GM_setValue
 // ==/UserScript==
 //
-// Runtime attribution: statically bundled Kuromoji.js 0.1.2 modules, Apache-2.0.
-// Source and license: https://github.com/takuyaa/kuromoji.js/tree/0.1.2
-// Katakana matching semantics derived from Katakana Terminator, MIT.
-// Source: https://github.com/Arnie97/katakana-terminator
+// YomiRuby copyright (c) 2026 ywu73.
+// Third-party provenance and independent license files are retained in the repository.
+//
+// ===== YomiRuby — MIT License =====
+// MIT License
+//
+// Copyright (c) 2026 ywu73
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// ===== Kuromoji.js — Apache License 2.0 =====
+//
+//                                  Apache License
+//                            Version 2.0, January 2004
+//                         http://www.apache.org/licenses/
+//
+//    TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+//
+//    1. Definitions.
+//
+//       "License" shall mean the terms and conditions for use, reproduction,
+//       and distribution as defined by Sections 1 through 9 of this document.
+//
+//       "Licensor" shall mean the copyright owner or entity authorized by
+//       the copyright owner that is granting the License.
+//
+//       "Legal Entity" shall mean the union of the acting entity and all
+//       other entities that control, are controlled by, or are under common
+//       control with that entity. For the purposes of this definition,
+//       "control" means (i) the power, direct or indirect, to cause the
+//       direction or management of such entity, whether by contract or
+//       otherwise, or (ii) ownership of fifty percent (50%) or more of the
+//       outstanding shares, or (iii) beneficial ownership of such entity.
+//
+//       "You" (or "Your") shall mean an individual or Legal Entity
+//       exercising permissions granted by this License.
+//
+//       "Source" form shall mean the preferred form for making modifications,
+//       including but not limited to software source code, documentation
+//       source, and configuration files.
+//
+//       "Object" form shall mean any form resulting from mechanical
+//       transformation or translation of a Source form, including but
+//       not limited to compiled object code, generated documentation,
+//       and conversions to other media types.
+//
+//       "Work" shall mean the work of authorship, whether in Source or
+//       Object form, made available under the License, as indicated by a
+//       copyright notice that is included in or attached to the work
+//       (an example is provided in the Appendix below).
+//
+//       "Derivative Works" shall mean any work, whether in Source or Object
+//       form, that is based on (or derived from) the Work and for which the
+//       editorial revisions, annotations, elaborations, or other modifications
+//       represent, as a whole, an original work of authorship. For the purposes
+//       of this License, Derivative Works shall not include works that remain
+//       separable from, or merely link (or bind by name) to the interfaces of,
+//       the Work and Derivative Works thereof.
+//
+//       "Contribution" shall mean any work of authorship, including
+//       the original version of the Work and any modifications or additions
+//       to that Work or Derivative Works thereof, that is intentionally
+//       submitted to Licensor for inclusion in the Work by the copyright owner
+//       or by an individual or Legal Entity authorized to submit on behalf of
+//       the copyright owner. For the purposes of this definition, "submitted"
+//       means any form of electronic, verbal, or written communication sent
+//       to the Licensor or its representatives, including but not limited to
+//       communication on electronic mailing lists, source code control systems,
+//       and issue tracking systems that are managed by, or on behalf of, the
+//       Licensor for the purpose of discussing and improving the Work, but
+//       excluding communication that is conspicuously marked or otherwise
+//       designated in writing by the copyright owner as "Not a Contribution."
+//
+//       "Contributor" shall mean Licensor and any individual or Legal Entity
+//       on behalf of whom a Contribution has been received by Licensor and
+//       subsequently incorporated within the Work.
+//
+//    2. Grant of Copyright License. Subject to the terms and conditions of
+//       this License, each Contributor hereby grants to You a perpetual,
+//       worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+//       copyright license to reproduce, prepare Derivative Works of,
+//       publicly display, publicly perform, sublicense, and distribute the
+//       Work and such Derivative Works in Source or Object form.
+//
+//    3. Grant of Patent License. Subject to the terms and conditions of
+//       this License, each Contributor hereby grants to You a perpetual,
+//       worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+//       (except as stated in this section) patent license to make, have made,
+//       use, offer to sell, sell, import, and otherwise transfer the Work,
+//       where such license applies only to those patent claims licensable
+//       by such Contributor that are necessarily infringed by their
+//       Contribution(s) alone or by combination of their Contribution(s)
+//       with the Work to which such Contribution(s) was submitted. If You
+//       institute patent litigation against any entity (including a
+//       cross-claim or counterclaim in a lawsuit) alleging that the Work
+//       or a Contribution incorporated within the Work constitutes direct
+//       or contributory patent infringement, then any patent licenses
+//       granted to You under this License for that Work shall terminate
+//       as of the date such litigation is filed.
+//
+//    4. Redistribution. You may reproduce and distribute copies of the
+//       Work or Derivative Works thereof in any medium, with or without
+//       modifications, and in Source or Object form, provided that You
+//       meet the following conditions:
+//
+//       (a) You must give any other recipients of the Work or
+//           Derivative Works a copy of this License; and
+//
+//       (b) You must cause any modified files to carry prominent notices
+//           stating that You changed the files; and
+//
+//       (c) You must retain, in the Source form of any Derivative Works
+//           that You distribute, all copyright, patent, trademark, and
+//           attribution notices from the Source form of the Work,
+//           excluding those notices that do not pertain to any part of
+//           the Derivative Works; and
+//
+//       (d) If the Work includes a "NOTICE" text file as part of its
+//           distribution, then any Derivative Works that You distribute must
+//           include a readable copy of the attribution notices contained
+//           within such NOTICE file, excluding those notices that do not
+//           pertain to any part of the Derivative Works, in at least one
+//           of the following places: within a NOTICE text file distributed
+//           as part of the Derivative Works; within the Source form or
+//           documentation, if provided along with the Derivative Works; or,
+//           within a display generated by the Derivative Works, if and
+//           wherever such third-party notices normally appear. The contents
+//           of the NOTICE file are for informational purposes only and
+//           do not modify the License. You may add Your own attribution
+//           notices within Derivative Works that You distribute, alongside
+//           or as an addendum to the NOTICE text from the Work, provided
+//           that such additional attribution notices cannot be construed
+//           as modifying the License.
+//
+//       You may add Your own copyright statement to Your modifications and
+//       may provide additional or different license terms and conditions
+//       for use, reproduction, or distribution of Your modifications, or
+//       for any such Derivative Works as a whole, provided Your use,
+//       reproduction, and distribution of the Work otherwise complies with
+//       the conditions stated in this License.
+//
+//    5. Submission of Contributions. Unless You explicitly state otherwise,
+//       any Contribution intentionally submitted for inclusion in the Work
+//       by You to the Licensor shall be under the terms and conditions of
+//       this License, without any additional terms or conditions.
+//       Notwithstanding the above, nothing herein shall supersede or modify
+//       the terms of any separate license agreement you may have executed
+//       with Licensor regarding such Contributions.
+//
+//    6. Trademarks. This License does not grant permission to use the trade
+//       names, trademarks, service marks, or product names of the Licensor,
+//       except as required for reasonable and customary use in describing the
+//       origin of the Work and reproducing the content of the NOTICE file.
+//
+//    7. Disclaimer of Warranty. Unless required by applicable law or
+//       agreed to in writing, Licensor provides the Work (and each
+//       Contributor provides its Contributions) on an "AS IS" BASIS,
+//       WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+//       implied, including, without limitation, any warranties or conditions
+//       of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+//       PARTICULAR PURPOSE. You are solely responsible for determining the
+//       appropriateness of using or redistributing the Work and assume any
+//       risks associated with Your exercise of permissions under this License.
+//
+//    8. Limitation of Liability. In no event and under no legal theory,
+//       whether in tort (including negligence), contract, or otherwise,
+//       unless required by applicable law (such as deliberate and grossly
+//       negligent acts) or agreed to in writing, shall any Contributor be
+//       liable to You for damages, including any direct, indirect, special,
+//       incidental, or consequential damages of any character arising as a
+//       result of this License or out of the use or inability to use the
+//       Work (including but not limited to damages for loss of goodwill,
+//       work stoppage, computer failure or malfunction, or any and all
+//       other commercial damages or losses), even if such Contributor
+//       has been advised of the possibility of such damages.
+//
+//    9. Accepting Warranty or Additional Liability. While redistributing
+//       the Work or Derivative Works thereof, You may choose to offer,
+//       and charge a fee for, acceptance of support, warranty, indemnity,
+//       or other liability obligations and/or rights consistent with this
+//       License. However, in accepting such obligations, You may act only
+//       on Your own behalf and on Your sole responsibility, not on behalf
+//       of any other Contributor, and only if You agree to indemnify,
+//       defend, and hold each Contributor harmless for any liability
+//       incurred by, or claims asserted against, such Contributor by reason
+//       of your accepting any such warranty or additional liability.
+//
+//    END OF TERMS AND CONDITIONS
+//
+//    APPENDIX: How to apply the Apache License to your work.
+//
+//       To apply the Apache License to your work, attach the following
+//       boilerplate notice, with the fields enclosed by brackets "[]"
+//       replaced with your own identifying information. (Don't include
+//       the brackets!)  The text should be enclosed in the appropriate
+//       comment syntax for the file format. We also recommend that a
+//       file or class name and description of purpose be included on the
+//       same "printed page" as the copyright notice for easier
+//       identification within third-party archives.
+//
+//    Copyright [yyyy] [name of copyright owner]
+//
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
+//
+//        http://www.apache.org/licenses/LICENSE-2.0
+//
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
+//
+// ===== Kuromoji.js — upstream code copyright =====
+// Copyright 2014 Takuya Asano
+// Copyright 2010-2014 Atilika Inc. and contributors
+//
+// ===== Kuromoji.js — upstream NOTICE =====
+// Library dependencies
+// ====================
+//
+// This software includes a binary and/or source version of data from
+//
+// * mecab-ipadic-2.7.0-20070801
+//
+// which can be obtained from
+//
+// http://atilika.com/releases/mecab-ipadic/mecab-ipadic-2.7.0-20070801.tar.gz
+//
+// or
+//
+// http://jaist.dl.sourceforge.net/project/mecab/mecab-ipadic/2.7.0-20070801/mecab-ipadic-2.7.0-20070801.tar.gz
+//
+//
+//
+// Copyright and license
+// =====================
+//
+//
+// mecab-ipadic-2.7.0-20070801
+// ---------------------------
+//
+// Copyright 2000, 2001, 2002, 2003 Nara Institute of Science
+// and Technology.  All Rights Reserved.
+//
+// Use, reproduction, and distribution of this software is permitted.
+// Any copy of this software, whether in its original form or modified,
+// must include both the above copyright notice and the following
+// paragraphs.
+//
+// Nara Institute of Science and Technology (NAIST),
+// the copyright holders, disclaims all warranties with regard to this
+// software, including all implied warranties of merchantability and
+// fitness, in no event shall NAIST be liable for
+// any special, indirect or consequential damages or any damages
+// whatsoever resulting from loss of use, data or profits, whether in an
+// action of contract, negligence or other tortuous action, arising out
+// of or in connection with the use or performance of this software.
+//
+// A large portion of the dictionary entries
+// originate from ICOT Free Software.  The following conditions for ICOT
+// Free Software applies to the current dictionary as well.
+//
+// Each User may also freely distribute the Program, whether in its
+// original form or modified, to any third party or parties, PROVIDED
+// that the provisions of Section 3 ("NO WARRANTY") will ALWAYS appear
+// on, or be attached to, the Program, which is distributed substantially
+// in the same form as set out herein and that such intended
+// distribution, if actually made, will neither violate or otherwise
+// contravene any of the laws and regulations of the countries having
+// jurisdiction over the User or the intended distribution itself.
+//
+// NO WARRANTY
+//
+// The program was produced on an experimental basis in the course of the
+// research and development conducted during the project and is provided
+// to users as so produced on an experimental basis.  Accordingly, the
+// program is provided without any warranty whatsoever, whether express,
+// implied, statutory or otherwise.  The term "warranty" used herein
+// includes, but is not limited to, any warranty of the quality,
+// performance, merchantability and fitness for a particular purpose of
+// the program and the nonexistence of any infringement or violation of
+// any right of any third party.
+//
+// Each user of the program will agree and understand, and be deemed to
+// have agreed and understood, that there is no warranty whatsoever for
+// the program and, accordingly, the entire risk arising from or
+// otherwise connected with the program is assumed by the user.
+//
+// Therefore, neither ICOT, the copyright holder, or any other
+// organization that participated in or was otherwise related to the
+// development of the program and their respective officials, directors,
+// officers and other employees shall be held liable for any and all
+// damages, including, without limitation, general, special, incidental
+// and consequential damages, arising out of or otherwise in connection
+// with the use or inability to use the program or any product, material
+// or result produced or otherwise obtained by using the program,
+// regardless of whether they have been advised of, or otherwise had
+// knowledge of, the possibility of such damages at any time during the
+// project or thereafter.  Each user will be deemed to have agreed to the
+// foregoing by his or her commencement of use of the program.  The term
+// "use" as used herein includes, but is not limited to, the use,
+// modification, copying and distribution of the program and the
+// production of secondary products from the program.
+//
+// In the case where the program, whether in its original form or
+// modified, was distributed or delivered to or received by a user from
+// any person, organization or entity other than ICOT, unless it makes or
+// grants independently of ICOT any specific warranty to the user in
+// writing, such person, organization or entity, will also be exempted
+// from and not be held liable to the user for any such damages as noted
+// above as far as the program is concerned.
+// ˜˜
+//
+// ===== doublearray 0.0.2 — MIT License =====
+// The MIT License (MIT)
+//
+// Copyright (c) 2014 Takuya Asano
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// ===== zlibjs 0.3.1 — MIT License =====
+// /**
+//  * @license
+//  * zlib.js
+//  * JavaScript Zlib Library
+//  * https://github.com/imaya/zlib.js
+//  *
+//  * The MIT License
+//  *
+//  * Copyright (c) 2012 imaya
+//  *
+//  * Permission is hereby granted, free of charge, to any person obtaining a copy
+//  * of this software and associated documentation files (the "Software"), to deal
+//  * in the Software without restriction, including without limitation the rights
+//  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//  * copies of the Software, and to permit persons to whom the Software is
+//  * furnished to do so, subject to the following conditions:
+//  *
+//  * The above copyright notice and this permission notice shall be included in
+//  * all copies or substantial portions of the Software.
+//  *
+//  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//  * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+//  * THE SOFTWARE.
+//  */
+//
+// ===== Katakana Terminator — MIT License =====
+// The MIT License (MIT)
+//
+// Copyright (c) 2017-2022 Katakana Terminator Contributors
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
 (() => {
   var __create = Object.create;
@@ -3304,6 +3711,11 @@
     kanji: "yomi-ruby:auto-origin:",
     katakana: "yomi-ruby:katakana-origin:"
   });
+  var LOCALE_SETTING_KEY = "yomi-ruby:locale";
+  var SUPPORTED_LOCALES = Object.freeze(["en", "zh"]);
+  function isSupportedLocale(value) {
+    return SUPPORTED_LOCALES.includes(value);
+  }
   function originSettingKey(feature, origin) {
     const prefix = SETTING_PREFIXES[feature];
     if (!prefix) {
@@ -3312,25 +3724,30 @@
     return `${prefix}${origin}`;
   }
   async function getFeatureEnabledForOrigin(gmGetValue, feature, origin = location.origin) {
-    return Boolean(await gmGetValue(originSettingKey(feature, origin), false));
+    return await gmGetValue(originSettingKey(feature, origin), false) === true;
   }
   async function setFeatureEnabledForOrigin(gmSetValue, feature, enabled, origin = location.origin) {
     await gmSetValue(originSettingKey(feature, origin), Boolean(enabled));
   }
+  async function getStoredLocale(gmGetValue) {
+    return gmGetValue(LOCALE_SETTING_KEY, null);
+  }
+  async function setStoredLocale(gmSetValue, locale) {
+    if (!isSupportedLocale(locale)) {
+      throw new TypeError(`Unsupported YomiRuby locale: ${locale}`);
+    }
+    await gmSetValue(LOCALE_SETTING_KEY, locale);
+  }
 
   // src/controls.js
-  var KATAKANA_CONSENT_MESSAGE = [
-    "开启后，YomiRuby 会把检测到的片假名词组发送给 Google Translate，",
-    "用于显示片假名英文标注。不会发送完整句子、页面标题或网页 URL。",
-    "是否允许当前网站使用此联网功能？"
-  ].join("\n");
   async function installYomiRubyControls({
     origin,
     registerMenuCommand,
     unregisterMenuCommand,
     getValue,
     setValue,
-    confirmKatakana,
+    localizer: localizer2,
+    localePersistenceError = null,
     kanji,
     katakana,
     showStatus
@@ -3339,19 +3756,26 @@
     const definitions = [
       {
         feature: "kanji",
-        label: "汉字罗马音",
+        menuKey: "Kanji",
         session: kanji
       },
       {
         feature: "katakana",
-        label: "片假名英文",
-        session: katakana,
-        confirmEnable: () => confirmKatakana(KATAKANA_CONSENT_MESSAGE)
+        menuKey: "Katakana",
+        session: katakana
       }
     ];
+    let refreshMenus = () => {
+    };
     const controls = [];
+    const featureReadErrors = [];
     for (const definition of definitions) {
-      const enabled = await getFeatureEnabledForOrigin(getValue, definition.feature, origin);
+      let enabled = false;
+      try {
+        enabled = await getFeatureEnabledForOrigin(getValue, definition.feature, origin);
+      } catch (error) {
+        featureReadErrors.push({ feature: definition.feature, error });
+      }
       controls.push(createFeatureControl({
         ...definition,
         enabled,
@@ -3364,11 +3788,61 @@
           nextEnabled,
           origin
         )),
-        showStatus
+        showStatus,
+        localizer: localizer2,
+        refreshMenus: () => refreshMenus()
       }));
     }
-    for (const control of controls) {
-      control.register();
+    let languageMenuId = null;
+    let languageOperation = 0;
+    let persistedLocale = localizer2.getLocale();
+    const registerLanguage = () => {
+      if (languageMenuId != null) {
+        unregisterMenuCommand(languageMenuId);
+      }
+      languageMenuId = registerMenuCommand(localizer2.t("menu.language"), async () => {
+        const requestOperation = ++languageOperation;
+        const nextLocale = localizer2.getLocale() === "zh" ? "en" : "zh";
+        localizer2.setLocale(nextLocale);
+        refreshMenus();
+        try {
+          await persistence.enqueue(() => setStoredLocale(setValue, nextLocale));
+        } catch (error) {
+          if (requestOperation === languageOperation) {
+            localizer2.setLocale(persistedLocale);
+            refreshMenus();
+            showStatus(localizer2.t("error.localePersistence", { error: errorMessage(error) }), {
+              duration: 9e3,
+              error: true
+            });
+          }
+          return;
+        }
+        persistedLocale = nextLocale;
+      });
+    };
+    refreshMenus = () => {
+      for (const control of controls) {
+        control.register();
+      }
+      registerLanguage();
+    };
+    refreshMenus();
+    if (localePersistenceError) {
+      showStatus(localizer2.t("error.localePersistence", {
+        error: errorMessage(localePersistenceError)
+      }), {
+        duration: 9e3,
+        error: true
+      });
+    }
+    for (const { feature, error } of featureReadErrors) {
+      showStatus(localizer2.t(`error.${feature}ReadPersistence`, {
+        error: errorMessage(error)
+      }), {
+        duration: 9e3,
+        error: true
+      });
     }
     for (const control of controls) {
       control.startIfEnabled();
@@ -3390,14 +3864,15 @@
   }
   function createFeatureControl({
     feature,
-    label,
+    menuKey,
     session: session2,
     enabled: initialEnabled,
     registerMenuCommand,
     unregisterMenuCommand,
     persist,
-    confirmEnable,
-    showStatus
+    showStatus,
+    localizer: localizer2,
+    refreshMenus
   }) {
     if (!session2 || typeof session2.enable !== "function" || typeof session2.disable !== "function") {
       throw new TypeError(`The ${feature} feature requires enable and disable functions.`);
@@ -3409,26 +3884,11 @@
       if (menuId != null) {
         unregisterMenuCommand(menuId);
       }
-      menuId = registerMenuCommand(`${enabled ? "关闭" : "开启"}本网站${label}`, async () => {
+      menuId = registerMenuCommand(localizer2.t(`menu.${enabled ? "disable" : "enable"}${menuKey}`), async () => {
         const requestedEnabled = !enabled;
-        if (requestedEnabled && confirmEnable) {
-          let confirmed = false;
-          try {
-            confirmed = Boolean(await confirmEnable());
-          } catch (error) {
-            showStatus(`无法确认${label}联网授权：${errorMessage(error)}`, {
-              duration: 9e3,
-              error: true
-            });
-            return;
-          }
-          if (!confirmed) {
-            return;
-          }
-        }
         const requestOperation = ++operation;
         enabled = requestedEnabled;
-        register();
+        refreshMenus();
         if (!requestedEnabled) {
           session2.disable();
         }
@@ -3437,10 +3897,12 @@
         } catch (error) {
           if (requestOperation === operation) {
             enabled = false;
-            register();
+            refreshMenus();
             session2.disable();
-            const suffix = requestedEnabled ? "功能保持关闭。" : "本页已关闭，但刷新后可能再次启用。";
-            showStatus(`无法保存本网站${label}设置：${errorMessage(error)}。${suffix}`, {
+            showStatus(localizer2.t(
+              `error.${feature}${requestedEnabled ? "Enable" : "Disable"}Persistence`,
+              { error: errorMessage(error) }
+            ), {
               duration: 9e3,
               error: true
             });
@@ -3460,6 +3922,76 @@
         }
       }
     };
+  }
+
+  // src/i18n.js
+  var MESSAGES = Object.freeze({
+    en: Object.freeze({
+      "menu.enableKanji": "Enable Kanji Romaji on this site",
+      "menu.disableKanji": "Disable Kanji Romaji on this site",
+      "menu.enableKatakana": "Enable Online Katakana English on this site",
+      "menu.disableKatakana": "Disable Online Katakana English on this site",
+      "menu.language": "语言 / Language: 切换到简体中文",
+      "error.localePersistence": ({ error }) => `Could not save the language setting: ${error}`,
+      "error.kanjiEnablePersistence": ({ error }) => `Could not save the Kanji Romaji setting: ${error}. The feature remains disabled.`,
+      "error.kanjiDisablePersistence": ({ error }) => `Could not save the Kanji Romaji setting: ${error}. This page is disabled, but the feature may start again after reload.`,
+      "error.katakanaEnablePersistence": ({ error }) => `Could not save the Online Katakana English setting: ${error}. The feature remains disabled.`,
+      "error.katakanaDisablePersistence": ({ error }) => `Could not save the Online Katakana English setting: ${error}. This page is disabled, but the feature may start again after reload.`,
+      "error.kanjiReadPersistence": ({ error }) => `Could not read the Kanji Romaji setting. The feature remains disabled: ${error}`,
+      "error.katakanaReadPersistence": ({ error }) => `Could not read the Online Katakana English setting. The feature remains disabled: ${error}`,
+      "error.kanjiStartup": ({ error }) => `Could not safely start Kanji Romaji: ${error}`,
+      "error.katakanaStartup": ({ error }) => `Could not safely start Online Katakana English: ${error}`
+    }),
+    zh: Object.freeze({
+      "menu.enableKanji": "开启本网站汉字罗马音",
+      "menu.disableKanji": "关闭本网站汉字罗马音",
+      "menu.enableKatakana": "开启本网站联网片假名英文",
+      "menu.disableKatakana": "关闭本网站联网片假名英文",
+      "menu.language": "语言 / Language: Switch to English",
+      "error.localePersistence": ({ error }) => `无法保存语言设置：${error}`,
+      "error.kanjiEnablePersistence": ({ error }) => `无法保存本网站汉字罗马音设置：${error}。功能保持关闭。`,
+      "error.kanjiDisablePersistence": ({ error }) => `无法保存本网站汉字罗马音设置：${error}。本页已关闭，但刷新后可能再次启用。`,
+      "error.katakanaEnablePersistence": ({ error }) => `无法保存本网站联网片假名英文设置：${error}。功能保持关闭。`,
+      "error.katakanaDisablePersistence": ({ error }) => `无法保存本网站联网片假名英文设置：${error}。本页已关闭，但刷新后可能再次启用。`,
+      "error.kanjiReadPersistence": ({ error }) => `无法读取本网站汉字罗马音设置，功能保持关闭：${error}`,
+      "error.katakanaReadPersistence": ({ error }) => `无法读取本网站联网片假名英文设置，功能保持关闭：${error}`,
+      "error.kanjiStartup": ({ error }) => `无法安全启动汉字罗马音：${error}`,
+      "error.katakanaStartup": ({ error }) => `无法安全启动联网片假名英文：${error}`
+    })
+  });
+  function createLocalizer(initialLocale = "en", messages = MESSAGES) {
+    let locale = isSupportedLocale(initialLocale) ? initialLocale : "en";
+    return {
+      getLocale: () => locale,
+      setLocale(nextLocale) {
+        locale = isSupportedLocale(nextLocale) ? nextLocale : "en";
+      },
+      t(key, values = {}) {
+        const message = messages[locale]?.[key] ?? messages.en?.[key];
+        if (message == null) {
+          return key;
+        }
+        return typeof message === "function" ? message(values) : message;
+      }
+    };
+  }
+  async function initializeLocale({ getValue, setValue, primaryLanguage }) {
+    let storedLocale;
+    try {
+      storedLocale = await getStoredLocale(getValue);
+    } catch (persistenceError) {
+      return { locale: "en", persistenceError };
+    }
+    if (isSupportedLocale(storedLocale)) {
+      return { locale: storedLocale, persistenceError: null };
+    }
+    const locale = storedLocale == null && typeof primaryLanguage === "string" && primaryLanguage.toLowerCase().startsWith("zh") ? "zh" : "en";
+    try {
+      await setStoredLocale(setValue, locale);
+      return { locale, persistenceError: null };
+    } catch (persistenceError) {
+      return { locale, persistenceError };
+    }
   }
 
   // src/katakana-translation.js
@@ -3700,7 +4232,8 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
     installSessionStyles = installStyles,
     setTimer = globalThis.setTimeout,
     clearTimer = globalThis.clearTimeout,
-    logger = globalThis.console
+    logger = globalThis.console,
+    localizer: localizer2 = createLocalizer("en")
   }) {
     if (!document2 || !coordinator2 || typeof loadTokenizer !== "function" || typeof createAnalyzer2 !== "function" || typeof translatePhrases !== "function") {
       throw new TypeError("A document, coordinator, tokenizer path, and translation path are required.");
@@ -3723,7 +4256,6 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
         const abortController = new AbortController();
         kanjiAbortController = abortController;
         ensureStyles();
-        showStatus("正在读取并校验 Tampermonkey 预载词典…", { duration: 0 });
         try {
           const tokenizer = await loadTokenizer({ signal: abortController.signal });
           if (generation !== kanjiGeneration || abortController.signal.aborted) {
@@ -3731,11 +4263,10 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
           }
           coordinator2.enableKanji(createAnalyzer2(tokenizer));
           kanjiActive = true;
-          showStatus("汉字罗马音已开启。页面文字只在本页内分析。", { duration: 4e3 });
         } catch (error) {
           if (generation === kanjiGeneration && !abortController.signal.aborted) {
             coordinator2.disableKanji();
-            showStatus(`无法安全启动汉字罗马音：${errorMessage2(error)}`, {
+            showStatus(localizer2.t("error.kanjiStartup", { error: errorMessage2(error) }), {
               duration: 9e3,
               error: true
             });
@@ -3771,11 +4302,10 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
         try {
           coordinator2.enableKatakana(translatePhrases);
           katakanaActive = true;
-          showStatus("片假名英文已开启。匹配词组会发送给 Google Translate。", { duration: 5e3 });
         } catch (error) {
           katakanaActive = false;
           coordinator2.disableKatakana();
-          showStatus(`无法安全启动片假名英文：${errorMessage2(error)}`, {
+          showStatus(localizer2.t("error.katakanaStartup", { error: errorMessage2(error) }), {
             duration: 9e3,
             error: true
           });
@@ -4016,6 +4546,7 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
 
   // src/main.js
   var coordinator = new AnnotationCoordinator({ document });
+  var localizer = createLocalizer("en");
   var katakanaTranslation = createKatakanaTranslationClient({
     gmRequest: GM_xmlhttpRequest
   });
@@ -4029,17 +4560,25 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
       signal
     }),
     createAnalyzer,
-    translatePhrases: katakanaTranslation.translatePhrases
+    translatePhrases: katakanaTranslation.translatePhrases,
+    localizer
   });
   void bootstrap();
   async function bootstrap() {
+    const { locale, persistenceError } = await initializeLocale({
+      getValue: GM_getValue,
+      setValue: GM_setValue,
+      primaryLanguage: navigator.languages?.[0] ?? navigator.language
+    });
+    localizer.setLocale(locale);
     await installYomiRubyControls({
       origin: location.origin,
       registerMenuCommand: GM_registerMenuCommand,
       unregisterMenuCommand: GM_unregisterMenuCommand,
       getValue: GM_getValue,
       setValue: GM_setValue,
-      confirmKatakana: (message) => globalThis.confirm(message),
+      localizer,
+      localePersistenceError: persistenceError,
       kanji: session.kanji,
       katakana: session.katakana,
       showStatus: session.showStatus
