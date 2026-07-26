@@ -1,8 +1,8 @@
 # Network audit
 
-## YomiRuby 0.2.0 current local candidate model
+## YomiRuby 0.3.0 current local candidate model
 
-Version 0.2.0 retains the twelve exact `kuromoji@0.1.2` dictionary resources,
+Version 0.3.0 retains the twelve exact `kuromoji@0.1.2` dictionary resources,
 their byte lengths, SHA-256 digests, SRI metadata, and the local-only runtime
 resource reader. The kanji path introduces no new network value and still
 rejects HTTP(S) dictionary URLs at runtime.
@@ -13,10 +13,10 @@ The metadata now adds exactly:
 // @connect      translate.googleapis.com
 ```
 
-This permission supports one opt-in runtime endpoint:
+This permission supports one optional online runtime endpoint:
 `https://translate.googleapis.com/translate_a/single`. The katakana module is
-off for an unconfigured exact origin. After confirmation and successful setting
-persistence, it sends GET requests whose parameters are limited to `client`,
+off for an unconfigured exact origin. After one menu click and successful
+exact-origin setting persistence, it sends GET requests whose parameters are limited to `client`,
 `dt`, `sl`, `tl`, and `q`; `q` contains matched, deduplicated katakana phrases
 joined by newlines. Requests have an explicit timeout, no body, no custom
 headers, one in-flight request maximum, phrase-count and encoded-URL batching,
@@ -28,6 +28,10 @@ claim of zero data disclosure. The implementation does not add page titles,
 page URLs, origins, browsing history, complete sentences, surrounding kanji or
 hiragana, analytics, a second provider, or a remote fallback.
 
+There is no confirmation dialog or separate consent key in 0.3.0. The bilingual
+`Online` / `联网` menu wording discloses the network behavior. Normal operation
+has no loading, success, disable, or language-switch status notice.
+
 Automated injected-request tests assert the exact host/path/parameters,
 deduplication, absence of body/headers, response mapping, batching, serial
 execution, delay, invalid-response rejection, and abort behavior. The build
@@ -36,7 +40,7 @@ audit asserts one exact `@connect`, one fixed translation endpoint, two distinct
 ordinary `fetch`, `sendBeacon`, page persistence, dynamic evaluation, runtime
 remote dictionary URLs, or extra request call sites.
 
-This is local evidence. No 0.2.0 Tampermonkey installation, extension-background
+This is local evidence. No 0.3.0 Tampermonkey installation, extension-background
 capture, reload-persistence test, x.com run, or standalone Katakana Terminator
 migration has been performed. A synthetic two-phrase GET probe using only
 `ゲーム` and `テレビ` was attempted on 2026-07-26; the current execution

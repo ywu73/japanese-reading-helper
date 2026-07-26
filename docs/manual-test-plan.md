@@ -1,85 +1,153 @@
-# Chrome and Tampermonkey manual test plan for YomiRuby 0.2.0
+# Desktop Chrome + Tampermonkey manual test plan — YomiRuby 0.3.0
 
-Do not install the candidate until the user explicitly authorizes installation. Do not disable the separately installed Katakana Terminator until YomiRuby 0.2.0 has passed the relevant real-browser gates.
+Do not install this candidate, mutate the user's Chrome/Tampermonkey state, or
+disable a separately installed Katakana Terminator until the user explicitly
+authorizes the relevant action. Record the exact candidate path, size, SHA-256,
+Chrome version, Tampermonkey version, origin, and timestamps.
 
-## 1. Install and metadata gate
+## 1. Artifact, metadata, install, and update
 
-1. Build `dist/yomi-ruby.user.js` and inspect the metadata header.
-2. Confirm `@name YomiRuby`, `@namespace yomi-ruby.local`, `@version 0.2.0`, exactly twelve SRI `@resource` entries, and exactly `@connect translate.googleapis.com`.
-3. Confirm Tampermonkey accepts all resources and the exact connect permission. Record extension-background acquisition evidence separately from page requests.
-4. Confirm there is only one active YomiRuby entry. Treat the historical namespace cutover as a separate identity concern and do not run obsolete Japanese Romaji Ruby builds simultaneously.
+1. Confirm the installed file is byte-identical to the locally verified
+   `dist/yomi-ruby.user.js`.
+2. Inspect `@name`, bilingual metadata, namespace, `@version 0.3.0`, MIT
+   metadata, homepage/support/download/update URLs, two ordinary web `@match`
+   values, `@noframes`, twelve SRI `@resource` values, exact grants, and sole
+   `@connect translate.googleapis.com`.
+3. Confirm there is one active YomiRuby entry and no obsolete Japanese Romaji
+   Ruby candidate running at the same time.
+4. Capture a fresh GitHub Raw install and an automatic update from a controlled
+   older test version. Distinguish userscript acquisition from resource
+   acquisition and page runtime requests.
+5. Confirm the Release artifact and checksum only after publication is
+   separately authorized; they must match `main/dist/yomi-ruby.user.js` byte for
+   byte.
 
-## 2. Default-off and settings isolation
+## 2. First-run locale and stable menus
 
-1. On an unconfigured origin, confirm the only two YomiRuby commands are **开启本网站汉字罗马音** and **开启本网站片假名英文**.
-2. Before either click, confirm there is no YomiRuby style/status/observer, local dictionary read, or Google request.
-3. Preload only `yomi-ruby:auto-origin:<origin>=true`; reload and confirm only kanji starts. Confirm no Google request and no katakana confirmation.
-4. Preload only `yomi-ruby:katakana-origin:<origin>=true`; reload and confirm only katakana starts and no Kuromoji dictionary read occurs.
-5. Confirm `jrr:auto-origin:` has no effect and the kanji setting never enables katakana.
-6. Verify protocol, hostname, and port differences remain separate origins.
+Exercise fresh storage with English, `zh-CN`, another `zh*` preference, and a
+non-Chinese preference:
 
-## 3. Katakana consent and request disclosure
+1. Confirm `zh* → zh` and every other primary language maps to English.
+2. Confirm the result is written once to global `yomi-ruby:locale` and future
+   initialization does not re-detect the browser preference.
+3. Confirm invalid stored locale falls back to English.
+4. Simulate first-run locale write failure. Confirm deterministic current-page
+   menus and one localized non-modal error.
+5. Confirm stable menu order: Kanji, Katakana, Language, with the exact copy in
+   both languages.
+6. Switch language in both directions. Confirm menus and future error copy
+   change immediately while feature settings, DOM, observers, Kuromoji loads,
+   and network requests remain unchanged.
+7. Exercise rapid switches and write failures; the latest requested/successful
+   persistent state must win without a third locale value.
 
-1. With katakana disabled, click **开启本网站片假名英文**.
-2. Confirm the dialog explicitly says matched katakana phrases will be sent to Google Translate and that complete sentences, page titles, and page URLs are not sent.
-3. Cancel. Confirm the setting remains false, the menu remains enable, no scan starts, and no request occurs.
-4. Confirm on a second attempt. Confirm persistence succeeds before scanning/requesting begins and the menu becomes **关闭本网站片假名英文**.
-5. In extension-background network tools, record the exact request host, path, method, query parameter names, encoded `q`, body, and headers. Confirm the request is GET to `translate.googleapis.com/translate_a/single`, has no body, and `q` contains only matched phrases joined with newlines.
-6. Confirm surrounding text, kanji, hiragana, complete sentences, `document.title`, `location.href`, and origin are absent. Note explicitly that the katakana phrases are visible in the URL and may enter logs.
+## 3. Default-off and exact-origin isolation
 
-## 4. Matching and response behavior
+1. On an unconfigured origin, confirm both feature menus say Enable and neither
+   feature starts.
+2. Before a feature click, confirm there is no page scan, YomiRuby style/status,
+   body MutationObserver/IntersectionObserver, dictionary read, or Google
+   request.
+3. Preload each exact-origin boolean independently and confirm only that module
+   starts after reload. Katakana-only must not load Kuromoji; Kanji-only must not
+   contact Google.
+4. Confirm protocol, host, and port differences remain separate origins.
+5. Confirm `jrr:auto-origin:` is ignored and no feature state is inferred from
+   another feature or from locale.
 
-Check ordinary full-width katakana, half-width katakana, long marks, combination marks, brand names, names, non-English loanwords, onomatopoeia, and single characters outside the original matching semantics.
+## 4. Silent control lifecycle and persistence failure
 
-For controlled responses, verify:
+1. Click each enable command once. Katakana must start without `confirm()` or a
+   second consent state after its boolean write succeeds.
+2. Confirm normal enable, disable, loading, startup success, and language switch
+   create no popup, banner, or YomiRuby status element.
+3. Simulate feature enable-write failure. Confirm fail-closed state, restored
+   Enable menu, no session start, and one localized non-modal error.
+4. Simulate disable-write failure. Confirm the current page stops immediately,
+   with an error explaining that reload may start the still-persisted feature.
+5. Exercise enable/disable/enable and feature/language interleavings. Final
+   menu, storage, DOM, observers, queues, and requests must match the last valid
+   requested state.
 
-- non-empty Latin-containing translation commits as returned;
-- empty, unchanged Japanese, non-Latin, missing, unknown-original, duplicate-original, malformed JSON, HTTP error, timeout, and wrong mapping keep the source unchanged;
-- reordered items with explicit unique originals map correctly without positional guessing;
-- failed phrases are not automatically retried in the same page session;
-- disabling and re-enabling creates a new session that can attempt again.
+## 5. Extension-background network capture
 
-## 5. Request scheduling and cancellation
+Capture extension-background traffic, not only the page target.
 
-1. Place katakana far below the viewport. Confirm it is not sent before scrolling near it.
-2. Scroll through enough unique phrases to force multiple batches. Confirm at most one request is in flight, both phrase-count and encoded-URL limits are honored, and a visible interval separates requests.
-3. Add dynamic near-viewport content and confirm it is queued once without periodic whole-page scans.
-4. Disable while phrases are queued, during the interval, and during an active request. Confirm unsent work is cleared and the request is aborted when Tampermonkey exposes cancellation.
-5. Deliver or simulate a late response after disable. Confirm no Ruby appears.
-6. Modify or remove a target before its response. Confirm the old result is discarded.
+### GitHub Raw and unpkg
 
-## 6. Dual-module coordination
+1. Record install/update requests to the sole Raw URL.
+2. Record all twelve fixed unpkg dictionary resources and compare their URL,
+   byte length, and SHA-256 with `vendor/manifest.json`.
+3. On ordinary page reload after installation, confirm no runtime unpkg request
+   is made by YomiRuby and local resource URLs are accepted only after runtime
+   length/digest verification.
 
-Exercise all four final states and both activation orders:
+### Google Translate
 
-| Kanji | Katakana | Expected behavior |
-|---|---|---|
-| Off | Off | Original DOM; no tokenizer or Google request |
-| On | Off | Reliable kanji tokens receive local Hepburn only |
-| Off | On | Matched katakana may receive authorized online English only |
-| On | On | One coordinated, non-nested plan with katakana overlap priority |
+1. Before Katakana is enabled, confirm there is no Google request even when the
+   page contains Katakana.
+2. After enable, record exact host, path, method, query names, encoded `q`, body,
+   and headers. The request must be GET to
+   `translate.googleapis.com/translate_a/single`, have no body/custom headers,
+   and contain only matched, deduplicated phrases joined by newlines.
+3. Prove surrounding sentences, Kanji, Hiragana, title, URL, origin, and browsing
+   history are absent. Record that the Katakana phrases are exposed in the URL
+   and may enter logs.
+4. Confirm there is no second provider, analytics, remote logging, tracking ID,
+   install callback, or silent fallback.
 
-Then verify:
+## 6. Matching, validation, scheduling, and failure silence
 
-1. Non-overlapping kanji and katakana both render.
-2. For a controlled mixed token, katakana activation immediately removes an overlapping kanji Ruby and leaves plain source text while translation is pending.
-3. Katakana success wins the overlap; any remaining kanji is annotated only if independently reliable.
-4. Katakana failure releases the range and allows the reliable whole kanji token to return.
-5. Closing katakana after success restores the kanji plan without duplicate text or nested Ruby.
-6. Closing kanji leaves katakana Ruby and shared styles intact; closing katakana leaves kanji Ruby and styles intact.
-7. Rapid enable/disable/enable sequences end with DOM, menu, persistence, observers, and requests matching the last requested state.
+Check full-width and half-width Katakana, long marks, combination marks, brand
+names, names, non-English loanwords, onomatopoeia, and excluded single-character
+cases.
 
-## 7. DOM safety and rollback
+1. Verify only an explicit unique original maps to a non-empty, changed,
+   Latin-containing translation.
+2. Verify empty, unchanged, non-Latin, missing, unknown-original,
+   duplicate-original, malformed JSON, HTTP failure, timeout, and wrong mapping
+   preserve source text and create no repeated user-facing error.
+3. Confirm failed phrases are not retried in the same page session; a later
+   disable/re-enable may start a new session.
+4. Confirm off-screen content is not sent before reaching the viewport margin.
+5. Force multiple batches: one request maximum in flight, phrase-count and URL
+   budgets honored, and minimum interval observed.
+6. Disable during queued work, interval wait, and active request. Confirm work is
+   cleared, supported requests abort, and late results are discarded.
 
-Check ordinary text, links, nested inline markup, author Ruby, Katakana Terminator Ruby, forms, editable regions, code/pre, hidden/inert/aria-hidden content, script/style/template, SVG/MathML, media, and YomiRuby status UI.
+## 7. Dual-feature DOM matrix and rollback
 
-Confirm all project classes and attributes use `yomi-ruby-` / `data-yomi-ruby-`; no nested Ruby is generated; author markup and `rt.katakana-terminator-rt` / `rt[data-rt]` remain exact. Repeat complete on/off cycles at least three times and compare the restored HTML with the original fixture.
+Exercise Kanji off/on × Katakana off/on in both activation orders. Confirm
+local-only Kanji, online-only Katakana, and a single non-nested coordinated plan
+when both are enabled.
 
-## 8. Failure and real-site gates
+Check ordinary text, links, nested inline markup, author Ruby, Katakana
+Terminator Ruby, forms, editable regions, code/pre, hidden/inert/aria-hidden
+content, script/style/template, SVG/MathML, media, dynamic content, and
+YomiRuby-owned UI. Confirm:
 
-1. Simulate dictionary absence, digest mismatch, translation HTTP failure, timeout, malformed payload, setting read/write failure, observer startup failure, and cancellation.
-2. Confirm each path fails closed without accidentally stopping the other active module.
-3. Repeat the full matrix on a controlled strict-CSP page and then x.com, including dynamic posts, links, composer/editor exclusion, menus, scrolling, rollback, and extension-background network capture.
-4. Do not run YomiRuby katakana and standalone Katakana Terminator together as a supported final configuration. A short coexistence check may confirm YomiRuby does not overwrite existing annotations; migration requires separately authorized disabling of the old script only after YomiRuby passes.
+- all ownership names use the YomiRuby prefix;
+- Katakana overlap is reserved without placeholder while pending;
+- success wins its overlap, failure releases it to a reliable whole-token
+  Kanji reading;
+- disabling either feature preserves the other feature;
+- source changes and detach/reinsert invalidate stale ownership;
+- three complete on/off cycles restore exact original fixture markup.
 
-Record actual browser version, Tampermonkey version, candidate hash, origin, timestamps, request evidence, failures, and exact unverified items in a new browser verification report. Do not amend historical 0.1.x reports.
+## 8. Failure, CSP, and real-site gates
+
+Simulate dictionary absence, wrong size/digest, unsupported local-resource URL,
+translation failures, setting read/write failures, observer startup failure,
+and cancellation. Confirm fail-closed behavior without stopping an unrelated
+active module.
+
+Repeat the matrix on the controlled strict-CSP fixture, then on x.com only after
+explicit authorization. Include dynamic posts, links, composer/editor
+exclusion, scrolling, language, reload, new tabs, cross-origin separation,
+rollback, performance observations, and extension-background capture.
+
+A coexistence check may prove YomiRuby preserves existing Katakana Terminator
+annotations. Disabling the separate script is a distinct, separately authorized
+migration step. Do not claim Chrome/Tampermonkey compatibility, privacy capture,
+update behavior, performance, accuracy, or complete rollback until the actual
+evidence is recorded in a new browser verification report.

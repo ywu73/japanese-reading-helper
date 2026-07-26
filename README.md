@@ -1,111 +1,156 @@
 # YomiRuby
 
-**Privacy-bounded reading annotations for Japanese web pages.**
+[简体中文](README.zh-CN.md)
 
-YomiRuby 是一个面向 Tampermonkey 的日语网页阅读辅助项目。**0.2.0 本地候选**包含两个可独立控制的模块：
+YomiRuby is a privacy-bounded Tampermonkey reading aid for Japanese web pages.
+It adds local Hepburn romaji above reliable words containing kanji and can add
+best-effort English ruby above matched katakana phrases through an optional
+online feature.
 
-- **汉字罗马音**：在浏览器本地使用固定版本 Kuromoji 分析含汉字词，并显示带长音符号的 Hepburn 罗马音。
-- **片假名英文**：仅在用户为当前精确 origin 明确授权后，把视口附近匹配到且去重的片假名词组发送给 Google Translate 无密钥端点，并在响应通过最低验收后显示英文 Ruby。
+**Version 0.3.0 is a locally verified release candidate. It has not yet passed
+the required desktop Chrome + Tampermonkey installation, extension-background
+network capture, update, real-site, or publication gates.**
 
-0.2.0 尚未安装，也没有完成真实 Tampermonkey、扩展后台网络、跨刷新资源缓存或 x.com 验证。自动化测试和本地构建不能替代这些浏览器门槛。
+## Features
 
-## 目标体验
+### Local Kanji Romaji
 
-原文：
+- Runs the pinned `kuromoji@0.1.2` analyzer locally in the page.
+- Annotates only tokens containing kanji when a reliable whole-token reading is
+  available.
+- Uses modified Hepburn with macrons, such as `kyō` and `Tōkyō`.
+- Leaves the source unchanged instead of guessing when a reliable reading is
+  unavailable.
+
+### Optional Online Katakana English
+
+- Starts only after you enable it for the exact current origin.
+- Sends only matched, deduplicated katakana phrases near the viewport to the
+  fixed Google Translate no-key endpoint.
+- Keeps individual failures silent and leaves the source unchanged when a
+  response is missing, ambiguous, invalid, or unsuitable.
+- Is experimental, best-effort, and not a promise of availability, accuracy,
+  or recovery of a word's English origin.
+
+## Installation status
+
+The planned sole install and automatic-update URL is:
+
+<https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js>
+
+Do not treat that URL as a released stable build until the 0.3.0 browser and
+publication gates are recorded as complete. The supported compatibility target
+for the first public release is **desktop Google Chrome with Tampermonkey**.
+Other browsers and userscript managers are unverified and receive no
+compatibility promise.
+
+YomiRuby matches ordinary HTTP and HTTPS pages and uses `@noframes`. All-sites
+matching is required so you can choose to enable YomiRuby on any site. It does
+not mean either feature starts everywhere: **both features are off for every
+unconfigured exact origin**.
+
+## Controls and language
+
+YomiRuby registers three Tampermonkey menu commands in a stable order: Kanji,
+Katakana, Language. Normal enable, disable, startup, and language-switch paths
+do not create consent dialogs, loading banners, or success banners. Temporary
+non-modal notices are reserved for actionable failures such as a setting write
+failure or safe startup failure.
+
+The interface supports English and Simplified Chinese. On first run only,
+YomiRuby maps a primary browser language beginning with `zh` to Simplified
+Chinese and everything else to English, then stores the choice globally. A
+manual language switch permanently overrides that initial detection. Switching
+language does not enable or disable a feature, rescan text, load Kuromoji, or
+send a translation request.
+
+Persistent settings are limited to:
+
+- `yomi-ruby:locale = "en" | "zh"` globally;
+- `yomi-ruby:auto-origin:<origin>` for Local Kanji Romaji;
+- `yomi-ruby:katakana-origin:<origin>` for Online Katakana English.
+
+No reading, phrase, translation, match, failure, queue, or request state is
+persisted.
+
+## Privacy and network disclosure
+
+| Network party | When it may be contacted | Purpose and data |
+|---|---|---|
+| GitHub Raw | Userscript install and automatic update | Downloads the userscript artifact; normal server request metadata applies. |
+| unpkg | Tampermonkey install and update of fixed resources | Downloads twelve immutable `kuromoji@0.1.2` dictionary resources pinned by URL, size, and SHA-256. Page text is not part of these requests. |
+| Google Translate | Only after Online Katakana English is enabled for the exact current origin and a safe text node contains a matched phrase near the viewport | A GET request sends matched, deduplicated katakana phrases in the `q` query parameter. |
+
+The Google request does **not** intentionally include surrounding sentences,
+kanji, hiragana, page titles, page URLs, origins, or browsing history. Because
+the phrases are present in a URL query, they may appear in browser, extension,
+network appliance, proxy, or service-side logs.
+
+YomiRuby has no project-owned analytics, telemetry, crash reporting, remote
+logging, tracking identifier, install callback, second translation provider,
+or silent remote fallback. The only allowed translation endpoint is:
 
 ```text
-今日はゲームで日本語を勉強します。
+https://translate.googleapis.com/translate_a/single
 ```
 
-两个模块都开启且片假名翻译有效时，结构示意为：
+See [Security and privacy boundary](docs/security-boundary.md), [Network audit](docs/network-audit.md), and [Security reporting](SECURITY.md).
 
-```html
-<ruby>今日<rt>kyō</rt></ruby>は
-<ruby>ゲーム<rt>game</rt></ruby>で
-<ruby>日本語<rt>nihongo</rt></ruby>を
-<ruby>勉強<rt>benkyō</rt></ruby>します。
-```
+## DOM and lifecycle safety
 
-## 控制与授权
+- Generated classes and attributes use the `yomi-ruby-` /
+  `data-yomi-ruby-` prefix.
+- Scripts, styles, forms, editable areas, code, hidden content, existing ruby,
+  SVG/MathML, media, and YomiRuby-owned UI are skipped.
+- Existing author ruby and Katakana Terminator annotations are preserved.
+- A page coordinator prevents nested or overlapping generated ruby and restores
+  source text when annotation is disabled.
+- Queued work and observers stop on disable; stale or aborted asynchronous
+  results cannot re-annotate the page.
 
-Tampermonkey 菜单提供两个独立动态命令，不向网页注入悬浮控制面板：
+## Katakana Terminator acknowledgement
 
-- `开启/关闭本网站汉字罗马音`
-- `开启/关闭本网站片假名英文`
+YomiRuby's optional online Katakana-to-English module is based on Katakana
+Terminator by Arnie97 and the Katakana Terminator Contributors. It adapts
+Katakana Terminator's Katakana matching pattern and Google Translate request
+approach. YomiRuby's local kanji-romaji module, verified Kuromoji loading,
+privacy-scoped DOM coordinator, viewport scheduling, cancellation, response
+validation, reversible lifecycle, and bilingual controls are separate
+implementations. Katakana Terminator is licensed under the MIT License.
 
-两个模块对未配置 origin 均默认关闭。现有 0.1.4 设置 `yomi-ruby:auto-origin:<origin>` 继续只控制汉字模块；片假名使用独立的 `yomi-ruby:katakana-origin:<origin>`，绝不从汉字设置或旧 `jrr:auto-origin:` 推导联网同意。
+The reviewed reference and immutable-revision record are retained under
+[`third_party/katakana-terminator/`](third_party/katakana-terminator/README.md).
 
-第一次开启片假名模块时，确认框会说明匹配到的片假名词组将发送给 Google Translate，并说明不会发送完整句子、页面标题或网页 URL。取消时不保存、不扫描、不请求。关闭片假名模块会立即清空未发送队列、取消等待任务、尽力 abort 在途请求并关闭该 origin 的自动运行；再次开启必须重新确认。
+## Development and verification
 
-## 数据与隐私边界
-
-### 汉字罗马音
-
-- 页面文字只传给当前页面内的 Kuromoji tokenizer。
-- Kuromoji 可执行模块在构建时静态打包；十二个词典由固定 `@resource` URL 预载，版本、大小与 SHA-256 均固定并在运行时再次校验。
-- 不使用远程读音、翻译、AI、分析或日志服务。
-
-### 片假名英文
-
-- 只发送 YomiRuby 安全正文节点内实际匹配到、已去重、已进入视口附近的片假名词组。
-- 固定端点为 `https://translate.googleapis.com/translate_a/single`，固定为日语到英语的 GET 请求。
-- `q` 查询参数包含片假名词组，因此词组可能出现在网络设备、代理或服务端日志中。
-- 不发送周围汉字、平假名、完整句子、页面标题、页面 URL 或浏览历史。
-- 不配置第二翻译服务，不做静默远程降级；Google 无密钥端点属于尽力而为能力，不承诺稳定性、可用性或翻译准确性。
-- 匹配、成功、失败、待处理、在途状态和翻译结果只保存在当前页面内存中。
-
-## 标注与冲突语义
-
-- 汉字模块只标注含汉字且有可靠整词读音的 token；汉字假名混写词使用完整词读音，例如 `食べる → taberu`。
-- 片假名匹配范围继承 Katakana Terminator 的全角、半角、长音和组合字符语义，但使用 YomiRuby 更严格的 DOM 安全范围。
-- 不预判片假名是否真是英语借词；输出称“在线翻译”，不承诺还原英文词源。
-- 响应必须是 trim 后非空、不同于原片假名且至少包含一个拉丁字母，并通过原词明确映射；缺项、重复、错配或无法解释时保留原文。
-- 非重叠范围分别标注。发生重叠时片假名先获得处理机会；等待期间保留原文且不插入空 Ruby。
-- 片假名成功时片假名英文胜出；重叠汉字只有存在独立可靠分析时才标注。片假名失败时释放保留范围，允许可靠整词汉字读音接管。
-- 不生成嵌套 Ruby，也不使用双层自定义注音布局。
-
-## DOM 与调度安全
-
-- 每个 YomiRuby DOM 变更使用 `yomi-ruby-` / `data-yomi-ruby-` 前缀并可归因。
-- 跳过脚本、样式、表单、编辑区、代码、隐藏内容、Ruby、SVG/MathML 等不安全或无关节点；普通链接文本允许处理。
-- 保留作者 Ruby 与现有 `rt.katakana-terminator-rt` / `rt[data-rt]`，不覆盖、不嵌套。
-- 页面级协调器统一决定两个模块的范围所有权、提交和回滚；最终开关状态决定最终 DOM，不依赖启动先后顺序。
-- 只处理视口及附近内容，并通过 IntersectionObserver/MutationObserver 增量处理；用户从未接近的屏外片假名不会发送。
-- 关闭、取消、目标改写或 generation 失效后，旧异步结果不能重新写入页面。
-
-## 开发与构建
-
-开发环境需要 Node `^20.19.0`、`^22.13.0` 或 `>=24.0.0`；`.nvmrc` 固定本地候选使用的 Node 版本。
+Use the Node version in `.nvmrc`, then install exact locked dependencies:
 
 ```bash
+npm ci
 npm test
 npm run check
 npm run verify:vendor
+npm run verify:deterministic-build
 ```
 
-生成文件只有 `dist/yomi-ruby.user.js`。`src/` 是源代码真相，`dist/` 由 `scripts/build.mjs` 生成，禁止手改。`npm run check` 会运行自动化测试、真实本地词典加载、可行性/Blob 原型、构建与构建安全审计。
+`src/` is the source of truth. `dist/yomi-ruby.user.js` is generated only by
+`scripts/build.mjs` and must not be hand-edited. The build embeds canonical
+YomiRuby and third-party license/NOTICE text and is audited for version,
+metadata, storage scope, request paths, prohibited capabilities, resources, and
+legal material.
 
-安装、停用旧脚本、真实 Chrome/x.com 操作、提交、推送和发布都属于独立外部动作，不包含在本地候选实施范围内。
+Local Node/jsdom evidence does not prove real Chrome/Tampermonkey behavior,
+extension-background privacy, install/update behavior, performance, accuracy,
+or complete browser rollback. See the [manual browser test plan](docs/manual-test-plan.md) and the versioned verification reports under `docs/`.
 
-## 目录
+## Contributing, security, and license
 
-```text
-src/              用户脚本源代码与页面级协调器
-scripts/          构建、依赖与安全审计工具
-vendor/           经核查的第三方资源清单
-tests/unit/       纯逻辑测试
-tests/integration/ DOM、生命周期、加载与请求边界测试
-tests/fixtures/   受控网页夹具
-docs/             安全边界、网络审计、手工计划和验证记录
-work/prototypes/  尚未进入正式实现的实验或本地预览
-dist/             生成的唯一可安装 userscript
-```
+Ordinary bugs and feature discussions use GitHub Issues. Security or privacy
+vulnerabilities must use GitHub Private Vulnerability Reporting; do not publish
+sensitive details in a public Issue. See [CONTRIBUTING.md](CONTRIBUTING.md) and
+[SECURITY.md](SECURITY.md).
 
-## 非目标与未验证项
-
-- 不提供远程汉字读音、AI 解释、学习记录、云同步或未知词逐字猜读。
-- 不支持 Chrome 内部页、扩展页、本地文件或 iframe 注入。
-- 不宣称能控制或回滚另一个仍在运行的独立 Katakana Terminator userscript；正式迁移需在真实验证后另行停用旧脚本。
-- 不根据本地 jsdom/Node 测试声称真实 Tampermonkey 兼容、翻译准确、隐私抓包完整、性能达标或完整浏览器回滚。
-
-历史候选证据保留在 `docs/verification-report-2026-07-25.md`、`docs/verification-report-0.1.3-2026-07-25.md` 和 `docs/verification-report-0.1.4-2026-07-26.md`；0.2.0 使用独立验证报告，不回写历史结论。
+YomiRuby-owned code and contributions are licensed under the [MIT License](LICENSE).
+Third-party license and provenance material is recorded in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). No CLA or DCO is required for
+version 0.3.0.

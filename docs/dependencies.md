@@ -28,17 +28,19 @@ currently maintained.
 ## Katakana matching attribution and translation endpoint
 
 YomiRuby's full-width and half-width katakana matching semantics are derived
-from **Katakana Terminator**, copyright 2017-2021 Katakana Terminator
+from **Katakana Terminator**, copyright 2017-2022 Katakana Terminator
 Contributors, licensed MIT:
 
 - source: <https://github.com/Arnie97/katakana-terminator>
-- reviewed reference copy: `docs/片假名终结者.js`
+- reviewed immutable revision: `dbbff055b41e5fa12886af50b9862d9ae9f307c9`
+- reviewed reference copy: `third_party/katakana-terminator/katakana-terminator.reference.user.js`
+- provenance and digest: `third_party/katakana-terminator/README.md`
 
 YomiRuby does not copy Katakana Terminator's periodic whole-page scanner or its
 DOM/request lifecycle. The page coordinator, viewport scheduling, batching,
 cancellation, response validation, ownership, and rollback are project-owned.
 
-After exact-origin consent, the katakana module calls the same no-key Google
+After the user enables the exact-origin feature, the katakana module calls the same no-key Google
 Translate endpoint used by the reference script:
 `https://translate.googleapis.com/translate_a/single`. This is an external
 runtime endpoint, not an executable dependency, pinned asset, official paid
@@ -52,9 +54,12 @@ provider is configured.
 | `esbuild` | 0.28.1 | MIT | Deterministic single-file userscript bundle |
 | `jsdom` | 29.1.1 | MIT | DOM integration tests and fixture generation |
 | `kuromoji` | 0.1.2 | Apache-2.0 | Statically bundled tokenizer modules and reproducible verification |
+| `doublearray` | 0.0.2 | MIT | Transitive runtime trie implementation bundled through Kuromoji |
+| `zlibjs` | 0.3.1 | MIT | Transitive runtime decompression for verified dictionary bytes |
 
-All three are exact direct versions in `package.json`. `package-lock.json`
-records the official npm-registry URLs, integrity values, resolved transitive
-versions, and declared licenses. `npm install` reported zero known audit
+The three direct development dependencies are exact in `package.json`.
+`doublearray` and `zlibjs` are exact transitive runtime versions in
+`package-lock.json`, which records the official npm-registry URLs, integrity
+values, resolved versions, and declared licenses. `npm install` reported zero known audit
 vulnerabilities on 2026-07-25; that time-bounded registry result is not a
 permanent security guarantee.
