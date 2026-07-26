@@ -5,9 +5,10 @@ import {
   getFeatureEnabledForOrigin,
   originSettingKey,
   setFeatureEnabledForOrigin,
+  setStoredLocale,
 } from "../../src/settings.js";
 
-test("kanji compatibility state and katakana network consent use independent exact-origin keys", async () => {
+test("kanji and online katakana feature states use independent exact-origin keys", async () => {
   const values = new Map([
     ["yomi-ruby:auto-origin:https://x.com", true],
     ["yomi-ruby:katakana-origin:https://news.example", true],
@@ -26,4 +27,20 @@ test("kanji compatibility state and katakana network consent use independent exa
   await setFeatureEnabledForOrigin(setValue, "katakana", true, "https://x.com");
   assert.equal(values.get("yomi-ruby:katakana-origin:https://x.com"), true);
   assert.equal(values.get("yomi-ruby:auto-origin:https://x.com"), true);
+});
+
+test("invalid persisted feature values fail closed instead of becoming truthy", async () => {
+  const getValue = async () => "false";
+
+  assert.equal(await getFeatureEnabledForOrigin(getValue, "kanji", "https://x.com"), false);
+});
+
+test("the locale persistence boundary rejects values outside the supported enum", async () => {
+  const writes = [];
+
+  await assert.rejects(
+    setStoredLocale(async (...values) => writes.push(values), "ja"),
+    /Unsupported YomiRuby locale/u,
+  );
+  assert.deepEqual(writes, []);
 });

@@ -1,13 +1,8 @@
 import {
   getFeatureEnabledForOrigin,
   setFeatureEnabledForOrigin,
+  setStoredLocale,
 } from "./settings.js";
-
-const KATAKANA_CONSENT_MESSAGE = [
-  "开启后，YomiRuby 会把检测到的片假名词组发送给 Google Translate，",
-  "用于显示片假名英文标注。不会发送完整句子、页面标题或网页 URL。",
-  "是否允许当前网站使用此联网功能？",
-].join("\n");
 
 export async function installYomiRubyControls({
   origin,
@@ -15,7 +10,8 @@ export async function installYomiRubyControls({
   unregisterMenuCommand,
   getValue,
   setValue,
-  confirmKatakana,
+  localizer,
+  localePersistenceError = null,
   kanji,
   katakana,
   showStatus,
@@ -24,20 +20,26 @@ export async function installYomiRubyControls({
   const definitions = [
     {
       feature: "kanji",
-      label: "汉字罗马音",
+      menuKey: "Kanji",
       session: kanji,
     },
     {
       feature: "katakana",
-      label: "片假名英文",
+      menuKey: "Katakana",
       session: katakana,
-      confirmEnable: () => confirmKatakana(KATAKANA_CONSENT_MESSAGE),
     },
   ];
 
+  let refreshMenus = () => {};
   const controls = [];
+  const featureReadErrors = [];
   for (const definition of definitions) {
-    const enabled = await getFeatureEnabledForOrigin(getValue, definition.feature, origin);
+    let enabled = false;
+    try {
+      enabled = await getFeatureEnabledForOrigin(getValue, definition.feature, origin);
+    } catch (error) {
+      featureReadErrors.push({ feature: definition.feature, error });
+    }
     controls.push(createFeatureControl({
       ...definition,
       enabled,
@@ -51,11 +53,61 @@ export async function installYomiRubyControls({
         origin,
       )),
       showStatus,
+      localizer,
+      refreshMenus: () => refreshMenus(),
     }));
   }
 
-  for (const control of controls) {
-    control.register();
+  let languageMenuId = null;
+  let languageOperation = 0;
+  let persistedLocale = localizer.getLocale();
+  const registerLanguage = () => {
+    if (languageMenuId != null) {
+      unregisterMenuCommand(languageMenuId);
+    }
+    languageMenuId = registerMenuCommand(localizer.t("menu.language"), async () => {
+      const requestOperation = ++languageOperation;
+      const nextLocale = localizer.getLocale() === "zh" ? "en" : "zh";
+      localizer.setLocale(nextLocale);
+      refreshMenus();
+      try {
+        await persistence.enqueue(() => setStoredLocale(setValue, nextLocale));
+      } catch (error) {
+        if (requestOperation === languageOperation) {
+          localizer.setLocale(persistedLocale);
+          refreshMenus();
+          showStatus(localizer.t("error.localePersistence", { error: errorMessage(error) }), {
+            duration: 9000,
+            error: true,
+          });
+        }
+        return;
+      }
+      persistedLocale = nextLocale;
+    });
+  };
+  refreshMenus = () => {
+    for (const control of controls) {
+      control.register();
+    }
+    registerLanguage();
+  };
+  refreshMenus();
+  if (localePersistenceError) {
+    showStatus(localizer.t("error.localePersistence", {
+      error: errorMessage(localePersistenceError),
+    }), {
+      duration: 9000,
+      error: true,
+    });
+  }
+  for (const { feature, error } of featureReadErrors) {
+    showStatus(localizer.t(`error.${feature}ReadPersistence`, {
+      error: errorMessage(error),
+    }), {
+      duration: 9000,
+      error: true,
+    });
   }
   for (const control of controls) {
     control.startIfEnabled();
@@ -79,14 +131,15 @@ function createPersistenceQueue() {
 
 function createFeatureControl({
   feature,
-  label,
+  menuKey,
   session,
   enabled: initialEnabled,
   registerMenuCommand,
   unregisterMenuCommand,
   persist,
-  confirmEnable,
   showStatus,
+  localizer,
+  refreshMenus,
 }) {
   if (!session || typeof session.enable !== "function" || typeof session.disable !== "function") {
     throw new TypeError(`The ${feature} feature requires enable and disable functions.`);
@@ -100,27 +153,11 @@ function createFeatureControl({
     if (menuId != null) {
       unregisterMenuCommand(menuId);
     }
-    menuId = registerMenuCommand(`${enabled ? "关闭" : "开启"}本网站${label}`, async () => {
+    menuId = registerMenuCommand(localizer.t(`menu.${enabled ? "disable" : "enable"}${menuKey}`), async () => {
       const requestedEnabled = !enabled;
-      if (requestedEnabled && confirmEnable) {
-        let confirmed = false;
-        try {
-          confirmed = Boolean(await confirmEnable());
-        } catch (error) {
-          showStatus(`无法确认${label}联网授权：${errorMessage(error)}`, {
-            duration: 9000,
-            error: true,
-          });
-          return;
-        }
-        if (!confirmed) {
-          return;
-        }
-      }
-
       const requestOperation = ++operation;
       enabled = requestedEnabled;
-      register();
+      refreshMenus();
       if (!requestedEnabled) {
         session.disable();
       }
@@ -130,12 +167,12 @@ function createFeatureControl({
       } catch (error) {
         if (requestOperation === operation) {
           enabled = false;
-          register();
+          refreshMenus();
           session.disable();
-          const suffix = requestedEnabled
-            ? "功能保持关闭。"
-            : "本页已关闭，但刷新后可能再次启用。";
-          showStatus(`无法保存本网站${label}设置：${errorMessage(error)}。${suffix}`, {
+          showStatus(localizer.t(
+            `error.${feature}${requestedEnabled ? "Enable" : "Disable"}Persistence`,
+            { error: errorMessage(error) },
+          ), {
             duration: 9000,
             error: true,
           });

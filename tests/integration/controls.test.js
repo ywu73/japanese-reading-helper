@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { installYomiRubyControls } from "../../src/controls.js";
+import { createLocalizer } from "../../src/i18n.js";
 
 test("an unconfigured origin exposes independent kanji and katakana commands without starting either module", async () => {
   const harness = createControlsHarness();
@@ -9,8 +10,9 @@ test("an unconfigured origin exposes independent kanji and katakana commands wit
 
   assert.deepEqual(harness.starts, { kanji: 0, katakana: 0 });
   assert.deepEqual(harness.menu.labels(), [
-    "开启本网站汉字罗马音",
-    "开启本网站片假名英文",
+    "Enable Kanji Romaji on this site",
+    "Enable Online Katakana English on this site",
+    "语言 / Language: 切换到简体中文",
   ]);
 });
 
@@ -25,42 +27,110 @@ test("the 0.1.4 origin setting enables only kanji and legacy JRR state remains i
 
   assert.deepEqual(harness.starts, { kanji: 1, katakana: 0 });
   assert.deepEqual(harness.menu.labels(), [
-    "关闭本网站汉字罗马音",
-    "开启本网站片假名英文",
+    "Disable Kanji Romaji on this site",
+    "Enable Online Katakana English on this site",
+    "语言 / Language: 切换到简体中文",
   ]);
   assert.equal(harness.stored.has("yomi-ruby:katakana-origin:https://x.com"), false);
 });
 
-test("cancelling first-use katakana consent neither persists nor starts the network feature", async () => {
-  const confirmations = [];
-  const harness = createControlsHarness({
-    confirmKatakana(message) {
-      confirmations.push(message);
-      return false;
-    },
-  });
-  await harness.install();
-
-  await harness.menu.invoke("开启本网站片假名英文");
-
-  assert.equal(confirmations.length, 1);
-  assert.match(confirmations[0], /片假名词组.*Google Translate/su);
-  assert.match(confirmations[0], /不会发送完整句子、页面标题或网页 URL/u);
-  assert.equal(harness.stored.has("yomi-ruby:katakana-origin:https://x.com"), false);
-  assert.equal(harness.starts.katakana, 0);
-  assert.ok(harness.menu.labels().includes("开启本网站片假名英文"));
-});
-
-test("confirmed katakana consent is persisted before the current page starts translating", async () => {
+test("one katakana menu click persists and starts the online feature without a confirmation gate", async () => {
   const events = [];
   const harness = createControlsHarness({ events });
   await harness.install();
 
-  await harness.menu.invoke("开启本网站片假名英文");
+  await harness.menu.invoke("Enable Online Katakana English on this site");
 
   assert.equal(harness.stored.get("yomi-ruby:katakana-origin:https://x.com"), true);
-  assert.deepEqual(events, ["confirm", "persist:katakana:true", "enable:katakana"]);
-  assert.ok(harness.menu.labels().includes("关闭本网站片假名英文"));
+  assert.deepEqual(events, ["persist:katakana:true", "enable:katakana"]);
+  assert.ok(harness.menu.labels().includes("Disable Online Katakana English on this site"));
+});
+
+test("language switching persists globally and immediately re-registers all menus without touching features", async () => {
+  const events = [];
+  const harness = createControlsHarness({ events });
+  await harness.install();
+
+  await harness.menu.invoke("语言 / Language: 切换到简体中文");
+
+  assert.equal(harness.stored.get("yomi-ruby:locale"), "zh");
+  assert.deepEqual(events, ["persist:locale:zh"]);
+  assert.deepEqual(harness.starts, { kanji: 0, katakana: 0 });
+  assert.deepEqual(harness.stops, { kanji: 0, katakana: 0 });
+  assert.deepEqual(harness.menu.labels(), [
+    "开启本网站汉字罗马音",
+    "开启本网站联网片假名英文",
+    "语言 / Language: Switch to English",
+  ]);
+});
+
+test("a first-run locale persistence failure keeps deterministic localized menus and shows one actionable error", async () => {
+  const localePersistenceError = new Error("storage denied");
+  const harness = createControlsHarness({ locale: "zh", localePersistenceError });
+  await harness.install();
+
+  assert.deepEqual(harness.menu.labels(), [
+    "开启本网站汉字罗马音",
+    "开启本网站联网片假名英文",
+    "语言 / Language: Switch to English",
+  ]);
+  assert.deepEqual(harness.statuses, [{
+    message: "无法保存语言设置：storage denied",
+    options: { duration: 9000, error: true },
+  }]);
+});
+
+test("rapid language switches converge on the final requested locale without changing feature state", async () => {
+  const firstWrite = deferred();
+  const secondWrite = deferred();
+  let localeWrites = 0;
+  const harness = createControlsHarness({
+    setValue: async (key, value) => {
+      if (key === "yomi-ruby:locale") {
+        localeWrites += 1;
+        await (localeWrites === 1 ? firstWrite.promise : secondWrite.promise);
+      }
+      harness.stored.set(key, value);
+    },
+  });
+  await harness.install();
+
+  const switchingToZh = harness.menu.invoke("语言 / Language: 切换到简体中文");
+  await waitFor(() => harness.menu.labels().includes("语言 / Language: Switch to English"));
+  const switchingBackToEn = harness.menu.invoke("语言 / Language: Switch to English");
+
+  firstWrite.resolve();
+  await Promise.resolve();
+  secondWrite.resolve();
+  await Promise.all([switchingToZh, switchingBackToEn]);
+
+  assert.equal(harness.stored.get("yomi-ruby:locale"), "en");
+  assert.deepEqual(harness.starts, { kanji: 0, katakana: 0 });
+  assert.deepEqual(harness.stops, { kanji: 0, katakana: 0 });
+  assert.deepEqual(harness.menu.labels(), [
+    "Enable Kanji Romaji on this site",
+    "Enable Online Katakana English on this site",
+    "语言 / Language: 切换到简体中文",
+  ]);
+});
+
+test("a failed manual language write restores the persisted locale and reports one localized error", async () => {
+  const harness = createControlsHarness({
+    setValue: async () => { throw new Error("storage denied"); },
+  });
+  await harness.install();
+
+  await harness.menu.invoke("语言 / Language: 切换到简体中文");
+
+  assert.deepEqual(harness.menu.labels(), [
+    "Enable Kanji Romaji on this site",
+    "Enable Online Katakana English on this site",
+    "语言 / Language: 切换到简体中文",
+  ]);
+  assert.deepEqual(harness.statuses, [{
+    message: "Could not save the language setting: storage denied",
+    options: { duration: 9000, error: true },
+  }]);
 });
 
 test("a failed katakana enable write stays fail closed and restores its enable command", async () => {
@@ -69,13 +139,40 @@ test("a failed katakana enable write stays fail closed and restores its enable c
   });
   await harness.install();
 
-  await harness.menu.invoke("开启本网站片假名英文");
+  await harness.menu.invoke("Enable Online Katakana English on this site");
 
   assert.equal(harness.starts.katakana, 0);
   assert.equal(harness.stops.katakana, 1);
-  assert.ok(harness.menu.labels().includes("开启本网站片假名英文"));
-  assert.match(harness.statuses.at(-1).message, /功能保持关闭/u);
+  assert.ok(harness.menu.labels().includes("Enable Online Katakana English on this site"));
+  assert.equal(
+    harness.statuses.at(-1).message,
+    "Could not save the Online Katakana English setting: storage denied. The feature remains disabled.",
+  );
   assert.equal(harness.statuses.at(-1).options.error, true);
+});
+
+test("a feature setting read failure keeps that feature off and still exposes all controls", async () => {
+  const harness = createControlsHarness({
+    getValue: async (key, fallback) => {
+      if (key.includes("katakana")) {
+        throw new Error("storage unavailable");
+      }
+      return fallback;
+    },
+  });
+
+  await harness.install();
+
+  assert.deepEqual(harness.starts, { kanji: 0, katakana: 0 });
+  assert.deepEqual(harness.menu.labels(), [
+    "Enable Kanji Romaji on this site",
+    "Enable Online Katakana English on this site",
+    "语言 / Language: 切换到简体中文",
+  ]);
+  assert.deepEqual(harness.statuses, [{
+    message: "Could not read the Online Katakana English setting. The feature remains disabled: storage unavailable",
+    options: { duration: 9000, error: true },
+  }]);
 });
 
 test("disabling one stored feature leaves the other active and changes only its own exact-origin setting", async () => {
@@ -87,19 +184,20 @@ test("disabling one stored feature leaves the other active and changes only its 
   });
   await harness.install();
 
-  await harness.menu.invoke("关闭本网站片假名英文");
+  await harness.menu.invoke("Disable Online Katakana English on this site");
 
   assert.deepEqual(harness.starts, { kanji: 1, katakana: 1 });
   assert.deepEqual(harness.stops, { kanji: 0, katakana: 1 });
   assert.equal(harness.stored.get("yomi-ruby:auto-origin:https://x.com"), true);
   assert.equal(harness.stored.get("yomi-ruby:katakana-origin:https://x.com"), false);
   assert.deepEqual(harness.menu.labels(), [
-    "关闭本网站汉字罗马音",
-    "开启本网站片假名英文",
+    "Disable Kanji Romaji on this site",
+    "Enable Online Katakana English on this site",
+    "语言 / Language: 切换到简体中文",
   ]);
 });
 
-test("rapid confirmed katakana enable then disable leaves persistence and runtime in the final off state", async () => {
+test("rapid katakana enable then disable leaves persistence and runtime in the final off state", async () => {
   const enableGate = deferred();
   const disableGate = deferred();
   const harness = createControlsHarness({
@@ -112,9 +210,9 @@ test("rapid confirmed katakana enable then disable leaves persistence and runtim
   });
   await harness.install();
 
-  const enabling = harness.menu.invoke("开启本网站片假名英文");
-  await waitFor(() => harness.menu.labels().includes("关闭本网站片假名英文"));
-  const disabling = harness.menu.invoke("关闭本网站片假名英文");
+  const enabling = harness.menu.invoke("Enable Online Katakana English on this site");
+  await waitFor(() => harness.menu.labels().includes("Disable Online Katakana English on this site"));
+  const disabling = harness.menu.invoke("Disable Online Katakana English on this site");
   enableGate.resolve();
   await Promise.resolve();
   disableGate.resolve();
@@ -123,14 +221,88 @@ test("rapid confirmed katakana enable then disable leaves persistence and runtim
   assert.equal(harness.stored.get("yomi-ruby:katakana-origin:https://x.com"), false);
   assert.equal(harness.starts.katakana, 0);
   assert.equal(harness.stops.katakana, 1);
-  assert.ok(harness.menu.labels().includes("开启本网站片假名英文"));
+  assert.ok(harness.menu.labels().includes("Enable Online Katakana English on this site"));
+});
+
+test("rapid katakana enable, disable, and enable converges on the final on state", async () => {
+  const gates = [deferred(), deferred(), deferred()];
+  let writes = 0;
+  const harness = createControlsHarness({
+    setValue: async (key, value) => {
+      const gate = gates[writes];
+      writes += 1;
+      await gate.promise;
+      harness.stored.set(key, value);
+    },
+  });
+  await harness.install();
+
+  const firstEnable = harness.menu.invoke("Enable Online Katakana English on this site");
+  await waitFor(() => harness.menu.labels().includes("Disable Online Katakana English on this site"));
+  const disable = harness.menu.invoke("Disable Online Katakana English on this site");
+  await waitFor(() => harness.menu.labels().includes("Enable Online Katakana English on this site"));
+  const finalEnable = harness.menu.invoke("Enable Online Katakana English on this site");
+
+  gates[0].resolve();
+  await waitFor(() => writes === 2);
+  gates[1].resolve();
+  await waitFor(() => writes === 3);
+  gates[2].resolve();
+  await Promise.all([firstEnable, disable, finalEnable]);
+
+  assert.equal(harness.stored.get("yomi-ruby:katakana-origin:https://x.com"), true);
+  assert.equal(harness.starts.katakana, 1);
+  assert.equal(harness.stops.katakana, 1);
+  assert.ok(harness.menu.labels().includes("Disable Online Katakana English on this site"));
+});
+
+test("feature and language operations interleave through one queue and converge on the final requests", async () => {
+  const gates = [deferred(), deferred(), deferred()];
+  const writes = [];
+  const harness = createControlsHarness({
+    setValue: async (key, value) => {
+      const index = writes.length;
+      writes.push([key, value]);
+      await gates[index].promise;
+      harness.stored.set(key, value);
+    },
+  });
+  await harness.install();
+
+  const enabling = harness.menu.invoke("Enable Online Katakana English on this site");
+  await waitFor(() => harness.menu.labels().includes("Disable Online Katakana English on this site"));
+  const switching = harness.menu.invoke("语言 / Language: 切换到简体中文");
+  await waitFor(() => harness.menu.labels().includes("关闭本网站联网片假名英文"));
+  const disabling = harness.menu.invoke("关闭本网站联网片假名英文");
+
+  gates[0].resolve();
+  await waitFor(() => writes.length === 2);
+  gates[1].resolve();
+  await waitFor(() => writes.length === 3);
+  gates[2].resolve();
+  await Promise.all([enabling, switching, disabling]);
+
+  assert.deepEqual(writes, [
+    ["yomi-ruby:katakana-origin:https://x.com", true],
+    ["yomi-ruby:locale", "zh"],
+    ["yomi-ruby:katakana-origin:https://x.com", false],
+  ]);
+  assert.equal(harness.starts.katakana, 0);
+  assert.equal(harness.stops.katakana, 1);
+  assert.deepEqual(harness.menu.labels(), [
+    "开启本网站汉字罗马音",
+    "开启本网站联网片假名英文",
+    "语言 / Language: Switch to English",
+  ]);
 });
 
 function createControlsHarness({
   stored = new Map(),
-  confirmKatakana,
+  getValue,
   setValue,
   events = [],
+  locale = "en",
+  localePersistenceError = null,
 } = {}) {
   const menu = createMenuHarness();
   const starts = { kanji: 0, katakana: 0 };
@@ -147,15 +319,16 @@ function createControlsHarness({
         origin: "https://x.com",
         registerMenuCommand: menu.register,
         unregisterMenuCommand: menu.unregister,
-        getValue: async (key, fallback) => stored.get(key) ?? fallback,
+        getValue: getValue ?? (async (key, fallback) => stored.get(key) ?? fallback),
         setValue: setValue ?? (async (key, value) => {
           stored.set(key, value);
-          events.push(`persist:${key.includes("katakana") ? "katakana" : "kanji"}:${value}`);
+          const setting = key === "yomi-ruby:locale"
+            ? "locale"
+            : key.includes("katakana") ? "katakana" : "kanji";
+          events.push(`persist:${setting}:${value}`);
         }),
-        confirmKatakana: confirmKatakana ?? (() => {
-          events.push("confirm");
-          return true;
-        }),
+        localizer: createLocalizer(locale),
+        localePersistenceError,
         kanji: featureSession("kanji", starts, stops, events),
         katakana: featureSession("katakana", starts, stops, events),
         showStatus: (message, options) => statuses.push({ message, options }),

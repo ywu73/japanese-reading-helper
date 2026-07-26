@@ -37,6 +37,31 @@ test("katakana-only activation does not load Kuromoji and enables only the coord
   assert.equal(tokenizerLoads, 0);
   assert.equal(kanjiEnables, 0);
   assert.equal(katakanaEnables, 1);
+  assert.equal(dom.window.document.querySelector("[data-yomi-ruby-status]"), null);
+});
+
+test("kanji activation stays silent while the verified tokenizer loads and after startup succeeds", async () => {
+  const dom = new JSDOM("<main>日本語</main>");
+  const tokenizerGate = deferred();
+  const coordinator = coordinatorHarness();
+  const session = createYomiRubySession({
+    document: dom.window.document,
+    coordinator,
+    loadTokenizer: async () => tokenizerGate.promise,
+    createAnalyzer: () => () => [],
+    translatePhrases: async () => new Map(),
+    setTimer: () => 1,
+    clearTimer: () => {},
+  });
+
+  const enabling = session.kanji.enable();
+  assert.equal(dom.window.document.querySelector("[data-yomi-ruby-status]"), null);
+
+  tokenizerGate.resolve({ id: "tokenizer" });
+  await enabling;
+
+  assert.equal(coordinator.kanjiEnables, 1);
+  assert.equal(dom.window.document.querySelector("[data-yomi-ruby-status]"), null);
 });
 
 test("shared styles remain until both feature sessions are disabled", async () => {
@@ -180,7 +205,10 @@ test("a katakana coordinator startup failure rolls back and reports fail-closed 
 
   assert.equal(disableCount, 1);
   assert.equal(dom.window.document.querySelector("[data-yomi-ruby-status]").getAttribute("role"), "alert");
-  assert.match(dom.window.document.querySelector("[data-yomi-ruby-status]").textContent, /无法安全启动片假名英文/u);
+  assert.equal(
+    dom.window.document.querySelector("[data-yomi-ruby-status]").textContent,
+    "Could not safely start Online Katakana English: observer unavailable",
+  );
   assert.equal(errors.length, 1);
 });
 

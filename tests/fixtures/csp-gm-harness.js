@@ -30,7 +30,6 @@ globalThis.GM_getValue = async (key, fallback) => key.startsWith("yomi-ruby:auto
   ? true
   : fallback;
 globalThis.GM_setValue = async () => {};
-globalThis.confirm = () => false;
 globalThis.GM_getResourceURL = (name) => resourceUrlByName.get(name);
 globalThis.GM_xmlhttpRequest = ({ url, onload, onerror, ontimeout, timeout }) => {
   const timer = setTimeout(() => {

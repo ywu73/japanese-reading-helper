@@ -1,3 +1,4 @@
+import { createLocalizer } from "./i18n.js";
 import { installStyles } from "./styles.js";
 
 export function createYomiRubySession({
@@ -10,6 +11,7 @@ export function createYomiRubySession({
   setTimer = globalThis.setTimeout,
   clearTimer = globalThis.clearTimeout,
   logger = globalThis.console,
+  localizer = createLocalizer("en"),
 }) {
   if (
     !document
@@ -40,7 +42,6 @@ export function createYomiRubySession({
       const abortController = new AbortController();
       kanjiAbortController = abortController;
       ensureStyles();
-      showStatus("正在读取并校验 Tampermonkey 预载词典…", { duration: 0 });
       try {
         const tokenizer = await loadTokenizer({ signal: abortController.signal });
         if (generation !== kanjiGeneration || abortController.signal.aborted) {
@@ -48,11 +49,10 @@ export function createYomiRubySession({
         }
         coordinator.enableKanji(createAnalyzer(tokenizer));
         kanjiActive = true;
-        showStatus("汉字罗马音已开启。页面文字只在本页内分析。", { duration: 4000 });
       } catch (error) {
         if (generation === kanjiGeneration && !abortController.signal.aborted) {
           coordinator.disableKanji();
-          showStatus(`无法安全启动汉字罗马音：${errorMessage(error)}`, {
+          showStatus(localizer.t("error.kanjiStartup", { error: errorMessage(error) }), {
             duration: 9000,
             error: true,
           });
@@ -89,11 +89,10 @@ export function createYomiRubySession({
       try {
         coordinator.enableKatakana(translatePhrases);
         katakanaActive = true;
-        showStatus("片假名英文已开启。匹配词组会发送给 Google Translate。", { duration: 5000 });
       } catch (error) {
         katakanaActive = false;
         coordinator.disableKatakana();
-        showStatus(`无法安全启动片假名英文：${errorMessage(error)}`, {
+        showStatus(localizer.t("error.katakanaStartup", { error: errorMessage(error) }), {
           duration: 9000,
           error: true,
         });
