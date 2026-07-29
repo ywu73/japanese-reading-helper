@@ -1,61 +1,48 @@
-import { findKatakanaMatches } from "./katakana.js";
-
 const INITIAL_URL = "https://www.bing.com/translator";
 const ALLOWED_HOSTS = new Set(["www.bing.com", "cn.bing.com"]);
-const LATIN_LETTER = /\p{Script=Latin}/u;
+const HAS_KANJI = /\p{Script=Han}/u;
+const SAFE_ROMAJI = /^[A-Za-zĀĪŪĒŌāīūēō'’-]+$/u;
 const MAX_GLOBAL_OBJECT_CHARACTERS = 16_384;
-const MAX_TRANSLITERATION_CHARACTERS = 1_000;
+const MAX_ROMAJI_CHARACTERS = 1_000;
 
-export function createBingTranslationClient({
+export function createBingKanjiRomajiClient({
   gmRequest,
   DOMParser = globalThis.DOMParser,
   now = Date.now,
   sleep = wait,
-  maxPhrasesPerRequest = 50,
-  maxEncodedTextLength = 1800,
-  minimumIntervalMs = 250,
+  minimumIntervalMs = 1000,
   requestTimeoutMs = 8000,
   refreshSkewMs = 60_000,
-  maxPhraseCharacters = 200,
+  maxWordCharacters = 200,
 }) {
   if (typeof gmRequest !== "function") {
-    throw new TypeError("A GM_xmlhttpRequest adapter is required for Bing translation.");
+    throw new TypeError("A GM_xmlhttpRequest adapter is required for Bing kanji romaji.");
   }
   if (typeof DOMParser !== "function") {
     throw new TypeError("A DOMParser is required for Bing translator initialization.");
-  }
-  if (!Number.isInteger(maxPhrasesPerRequest) || maxPhrasesPerRequest < 1) {
-    throw new TypeError("maxPhrasesPerRequest must be a positive integer.");
-  }
-  if (!Number.isInteger(maxEncodedTextLength) || maxEncodedTextLength < 1) {
-    throw new TypeError("maxEncodedTextLength must be a positive integer.");
   }
 
   let config = null;
   let configPromise = null;
   let operationQueue = Promise.resolve();
   let requestSequence = 0;
-  let lastBatchStartedAt = null;
+  let lastRequestStartedAt = null;
 
-  const translatePhrases = (phrases, { signal } = {}) => {
+  const romanizeWords = (words, { signal } = {}) => {
     const operation = operationQueue.then(async () => {
       throwIfAborted(signal);
-      const uniquePhrases = [...new Set(phrases.filter((phrase) => isEligiblePhrase(
-        phrase,
-        maxPhraseCharacters,
+      const uniqueWords = [...new Set(words.filter((word) => isEligibleWord(
+        word,
+        maxWordCharacters,
       )))];
-      const translations = new Map();
-      const batches = buildBatches(uniquePhrases, {
-        maxPhrasesPerRequest,
-        maxEncodedTextLength,
-      });
-      for (const batch of batches) {
-        const translatedBatch = await translateBatch(batch, signal);
-        for (const [phrase, translated] of translatedBatch) {
-          translations.set(phrase, translated);
+      const readings = new Map();
+      for (const word of uniqueWords) {
+        const romaji = await romanizeWord(word, signal);
+        if (romaji) {
+          readings.set(word, romaji);
         }
       }
-      return translations;
+      return readings;
     });
     operationQueue = operation.catch(() => {});
     return operation;
@@ -97,20 +84,20 @@ export function createBingTranslationClient({
   }
 
   async function waitForTrafficSlot(signal) {
-    if (lastBatchStartedAt == null || minimumIntervalMs <= 0) {
+    if (lastRequestStartedAt == null || minimumIntervalMs <= 0) {
       return;
     }
-    const remaining = minimumIntervalMs - (now() - lastBatchStartedAt);
+    const remaining = minimumIntervalMs - (now() - lastRequestStartedAt);
     if (remaining > 0) {
       await sleep(remaining, { signal });
     }
   }
 
-  async function translateBatch(phrases, signal) {
+  async function romanizeWord(word, signal) {
     let activeConfig = await getConfig(signal);
     await waitForTrafficSlot(signal);
     try {
-      return await requestBatch(activeConfig, phrases, signal);
+      return await requestWord(activeConfig, word, signal);
     } catch (error) {
       if (!(error instanceof HttpError) || error.status !== 401 || signal?.aborted) {
         throw error;
@@ -119,7 +106,7 @@ export function createBingTranslationClient({
       activeConfig = await getConfig(signal);
       await waitForTrafficSlot(signal);
       try {
-        return await requestBatch(activeConfig, phrases, signal);
+        return await requestWord(activeConfig, word, signal);
       } catch (retryError) {
         if (retryError instanceof HttpError && retryError.status === 401) {
           config = null;
@@ -129,9 +116,9 @@ export function createBingTranslationClient({
     }
   }
 
-  async function requestBatch(activeConfig, phrases, signal) {
+  async function requestWord(activeConfig, word, signal) {
     throwIfAborted(signal);
-    lastBatchStartedAt = now();
+    lastRequestStartedAt = now();
     const url = new URL("/ttranslatev3", activeConfig.origin);
     url.searchParams.set("isVertical", "1");
     url.searchParams.set("IG", activeConfig.ig);
@@ -141,8 +128,8 @@ export function createBingTranslationClient({
     url.searchParams.set("edgepdftranslator", "1");
     const data = new URLSearchParams({
       fromLang: "ja",
-      to: "en",
-      text: phrases.join("\n"),
+      to: "ja",
+      text: word,
       token: activeConfig.token,
       key: String(activeConfig.key),
       tryFetchingGenderDebiasedTranslations: "true",
@@ -158,12 +145,56 @@ export function createBingTranslationClient({
       timeout: requestTimeoutMs,
       anonymous: true,
       redirect: "error",
-    }, { signal, label: "Bing translation" });
-    validateTranslationResponseUrl(response.finalUrl ?? response.responseURL, url);
-    return parseTranslations(response.responseText, phrases);
+    }, { signal, label: "Bing kanji romaji" });
+    validateResponseUrl(response.finalUrl ?? response.responseURL, url);
+    return parseRomajiResponse(response.responseText, word);
   }
 
-  return { translatePhrases };
+  return { romanizeWords };
+}
+
+function parseRomajiResponse(responseText, word) {
+  if (typeof responseText !== "string" || responseText.includes("ShowCaptcha")) {
+    return null;
+  }
+  let payload;
+  try {
+    payload = JSON.parse(responseText);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(payload) || payload.length !== 2) {
+    return null;
+  }
+  const result = payload[0];
+  const metadata = payload[1];
+  if (!Array.isArray(result?.translations) || result.translations.length !== 1) {
+    return null;
+  }
+  const translation = result.translations[0];
+  const echoed = typeof translation?.text === "string" ? translation.text.trim() : "";
+  if (echoed !== word || translation?.to !== "ja") {
+    return null;
+  }
+  if (metadata == null || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const keys = Object.keys(metadata).sort();
+  if (keys.length !== 2 || keys[0] !== "inputTransliteration" || keys[1] !== "script") {
+    return null;
+  }
+  const romaji = metadata.inputTransliteration;
+  if (
+    metadata.script !== "Latn"
+    || typeof romaji !== "string"
+    || romaji.length === 0
+    || romaji.length > MAX_ROMAJI_CHARACTERS
+    || romaji !== romaji.trim()
+    || !SAFE_ROMAJI.test(romaji)
+  ) {
+    return null;
+  }
+  return romaji;
 }
 
 function validateTranslatorUrl(value) {
@@ -242,15 +273,15 @@ function parseConfig(html, DOMParser) {
   return { ig: igValues[0], iid, key, token, expiryIntervalMs };
 }
 
-function validateTranslationResponseUrl(value, requestedUrl) {
+function validateResponseUrl(value, requestedUrl) {
   let finalUrl;
   try {
     finalUrl = new URL(value);
   } catch {
-    throw new Error("Bing translation returned no valid final URL.");
+    throw new Error("Bing kanji romaji returned no valid final URL.");
   }
   if (finalUrl.href !== requestedUrl.href) {
-    throw new Error("Bing translation redirected away from the approved request URL.");
+    throw new Error("Bing kanji romaji redirected away from the approved request URL.");
   }
 }
 
@@ -272,99 +303,13 @@ function collectObjectInitializerIgValues(scriptText) {
   ));
 }
 
-function parseTranslations(responseText, phrases) {
-  if (typeof responseText !== "string" || responseText.includes("ShowCaptcha")) {
-    throw new Error("Bing translation returned CAPTCHA or invalid content.");
-  }
-  const payload = JSON.parse(responseText);
-  if (!Array.isArray(payload) || payload.length < 1 || payload.length > 2) {
-    throw new Error("Bing translation returned an unexpected response structure.");
-  }
-  if (payload.length === 2 && !isValidInputTransliteration(payload[1])) {
-    throw new Error("Bing translation returned unexpected transliteration metadata.");
-  }
-  const result = payload[0];
-  if (!Array.isArray(result?.translations) || result.translations.length !== 1) {
-    throw new Error("Bing translation returned an ambiguous response.");
-  }
-  const candidate = result.translations[0];
-  const translatedLines = typeof candidate?.text === "string"
-    ? candidate.text.split(/\r?\n/u).map((line) => line.trim())
-    : [];
-  if (
-    translatedLines.length !== phrases.length
-    || (candidate?.to != null && candidate.to !== "en")
-    || (result.detectedLanguage?.language != null && result.detectedLanguage.language !== "ja")
-  ) {
-    throw new Error("Bing translation returned no reliable Japanese-to-English translation.");
-  }
-  const translations = new Map();
-  for (let index = 0; index < phrases.length; index += 1) {
-    const phrase = phrases[index];
-    const translated = translatedLines[index];
-    if (!translated || translated === phrase || !LATIN_LETTER.test(translated)) {
-      throw new Error("Bing translation returned no reliable Japanese-to-English translation.");
-    }
-    translations.set(phrase, translated);
-  }
-  return translations;
-}
-
-function isValidInputTransliteration(value) {
-  if (value == null || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  const keys = Object.keys(value).sort();
-  if (keys.length !== 2 || keys[0] !== "inputTransliteration" || keys[1] !== "script") {
-    return false;
-  }
-  const transliteration = value.inputTransliteration;
-  return (
-    typeof transliteration === "string"
-    && transliteration.length > 0
-    && transliteration.length <= MAX_TRANSLITERATION_CHARACTERS
-    && transliteration === transliteration.trim()
-    && LATIN_LETTER.test(transliteration)
-    && value.script === "Latn"
-  );
-}
-
-function isEligiblePhrase(phrase, maxPhraseCharacters) {
-  if (typeof phrase !== "string" || phrase.length === 0 || phrase.length > maxPhraseCharacters) {
-    return false;
-  }
-  const matches = findKatakanaMatches(phrase);
-  return matches.length === 1 && matches[0].start === 0 && matches[0].end === phrase.length;
-}
-
-function buildBatches(phrases, { maxPhrasesPerRequest, maxEncodedTextLength }) {
-  const batches = [];
-  let batch = [];
-  for (const phrase of phrases) {
-    if (encodedTextLength([phrase]) > maxEncodedTextLength) {
-      continue;
-    }
-    const candidate = [...batch, phrase];
-    if (
-      batch.length > 0
-      && (
-        candidate.length > maxPhrasesPerRequest
-        || encodedTextLength(candidate) > maxEncodedTextLength
-      )
-    ) {
-      batches.push(batch);
-      batch = [];
-    }
-    batch.push(phrase);
-  }
-  if (batch.length > 0) {
-    batches.push(batch);
-  }
-  return batches;
-}
-
-function encodedTextLength(phrases) {
-  return encodeURIComponent(phrases.join("\n")).length;
+function isEligibleWord(word, maxWordCharacters) {
+  return typeof word === "string"
+    && word.length > 0
+    && word.length <= maxWordCharacters
+    && word === word.trim()
+    && !/[\r\n\u0000-\u001f\u007f]/u.test(word)
+    && HAS_KANJI.test(word);
 }
 
 function request(gmRequest, options, { signal, label }) {
@@ -391,11 +336,7 @@ function request(gmRequest, options, { signal, label }) {
     handle = gmRequest({
       ...options,
       onload(response) {
-        if (
-          !Number.isInteger(response?.status)
-          || response.status < 200
-          || response.status >= 300
-        ) {
+        if (!Number.isInteger(response?.status) || response.status < 200 || response.status >= 300) {
           const status = Number.isInteger(response?.status) ? response.status : "unknown";
           finish(reject, new HttpError(`${label} returned HTTP ${status}.`, response?.status));
           return;
@@ -429,7 +370,7 @@ function throwIfAborted(signal) {
 }
 
 function abortError() {
-  return new DOMException("The Bing translation was aborted.", "AbortError");
+  return new DOMException("Bing kanji romaji was aborted.", "AbortError");
 }
 
 function wait(milliseconds, { signal } = {}) {

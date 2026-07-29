@@ -1,83 +1,102 @@
 import { createLocalizer } from "./i18n.js";
+import { KanjiRuntime } from "./kanji-runtime.js";
+import { KatakanaRuntime } from "./katakana-runtime.js";
 import { installStyles } from "./styles.js";
 
 export function createYomiRubySession({
   document,
   coordinator,
-  loadTokenizer,
-  createAnalyzer,
-  translatePhrases,
+  kanjiMode = "local",
+  kanjiAnalyzerFactories,
+  translationProvider = "google",
+  translationProviderFactories,
+  translatePhrases = null,
   installSessionStyles = installStyles,
   setTimer = globalThis.setTimeout,
   clearTimer = globalThis.clearTimeout,
   logger = globalThis.console,
   localizer = createLocalizer("en"),
 }) {
-  if (
-    !document
-    || !coordinator
-    || typeof loadTokenizer !== "function"
-    || typeof createAnalyzer !== "function"
-    || typeof translatePhrases !== "function"
-  ) {
-    throw new TypeError("A document, coordinator, tokenizer path, and translation path are required.");
+  if (!document || !coordinator || !kanjiAnalyzerFactories) {
+    throw new TypeError("A document, coordinator, and kanji analyzer adapters are required.");
+  }
+  const resolvedTranslationFactories = translationProviderFactories ?? (
+    typeof translatePhrases === "function"
+      ? { [translationProvider]: () => translatePhrases }
+      : null
+  );
+  if (!resolvedTranslationFactories) {
+    throw new TypeError("Katakana translation adapters are required.");
   }
 
+  const kanjiRuntime = new KanjiRuntime({
+    mode: kanjiMode,
+    analyzerFactories: kanjiAnalyzerFactories,
+    onPlanChanged: (record) => coordinator.refresh(record),
+  });
+  const katakanaRuntime = new KatakanaRuntime({
+    provider: translationProvider,
+    translatorFactories: resolvedTranslationFactories,
+    onPlanChanged: (record) => coordinator.refresh(record),
+  });
   let kanjiActive = false;
-  let kanjiLoading = false;
+  let kanjiDesired = false;
   let katakanaActive = false;
-  let kanjiGeneration = 0;
-  let kanjiAbortController = null;
-  let currentTranslatePhrases = translatePhrases;
   let removeStyles = null;
   let statusElement = null;
   let statusTimer = null;
 
   const kanji = {
     async enable() {
-      if (kanjiActive || kanjiLoading) {
+      if (kanjiActive) {
         return;
       }
-      kanjiLoading = true;
-      const generation = ++kanjiGeneration;
-      const abortController = new AbortController();
-      kanjiAbortController = abortController;
+      kanjiDesired = true;
       ensureStyles();
       try {
-        const tokenizer = await loadTokenizer({ signal: abortController.signal });
-        if (generation !== kanjiGeneration || abortController.signal.aborted) {
+        await kanjiRuntime.enable();
+        if (!kanjiDesired || !kanjiRuntime.active) {
           return;
         }
-        coordinator.enableKanji(createAnalyzer(tokenizer));
+        coordinator.enableKanji(kanjiRuntime);
         kanjiActive = true;
       } catch (error) {
-        if (generation === kanjiGeneration && !abortController.signal.aborted) {
-          coordinator.disableKanji();
-          showStatus(localizer.t("error.kanjiStartup", { error: errorMessage(error) }), {
-            duration: 9000,
-            error: true,
-          });
-          logger?.error?.("[YomiRuby] Refused to start kanji annotation", error);
-        }
+        kanjiDesired = false;
+        kanjiRuntime.disable();
+        coordinator.disableKanji();
+        showStartupError("kanji", error);
       } finally {
-        if (generation === kanjiGeneration) {
-          kanjiLoading = false;
-          if (kanjiAbortController === abortController) {
-            kanjiAbortController = null;
-          }
-          removeStylesIfUnused();
-        }
+        removeStylesIfUnused();
       }
     },
     disable() {
-      kanjiGeneration += 1;
-      kanjiLoading = false;
-      kanjiAbortController?.abort();
-      kanjiAbortController = null;
+      kanjiDesired = false;
       kanjiActive = false;
       coordinator.disableKanji();
+      kanjiRuntime.disable();
       removeStatus();
       removeStylesIfUnused();
+    },
+    async setMode(mode) {
+      if (!kanjiActive) {
+        await kanjiRuntime.setMode(mode);
+        return;
+      }
+      coordinator.disableKanji();
+      kanjiActive = false;
+      try {
+        await kanjiRuntime.setMode(mode);
+        if (kanjiRuntime.active && kanjiDesired) {
+          coordinator.enableKanji(kanjiRuntime);
+          kanjiActive = true;
+        }
+      } catch (error) {
+        kanjiDesired = false;
+        kanjiRuntime.disable();
+        showStartupError("kanji", error);
+      } finally {
+        removeStylesIfUnused();
+      }
     },
   };
 
@@ -88,37 +107,56 @@ export function createYomiRubySession({
       }
       ensureStyles();
       try {
-        coordinator.enableKatakana(currentTranslatePhrases);
+        await katakanaRuntime.enable();
+        if (!katakanaRuntime.active) {
+          return;
+        }
+        coordinator.enableKatakana(katakanaRuntime);
         katakanaActive = true;
       } catch (error) {
-        katakanaActive = false;
+        katakanaRuntime.disable();
         coordinator.disableKatakana();
-        showStatus(localizer.t("error.katakanaStartup", { error: errorMessage(error) }), {
-          duration: 9000,
-          error: true,
-        });
-        logger?.error?.("[YomiRuby] Refused to start katakana annotation", error);
+        showStartupError("katakana", error);
+      } finally {
+        removeStylesIfUnused();
       }
     },
     disable() {
       katakanaActive = false;
       coordinator.disableKatakana();
+      katakanaRuntime.disable();
       removeStatus();
       removeStylesIfUnused();
     },
-    async setTranslator(nextTranslatePhrases) {
-      if (typeof nextTranslatePhrases !== "function") {
-        throw new TypeError("Katakana translator replacement requires a translation function.");
-      }
-      currentTranslatePhrases = nextTranslatePhrases;
+    async setProvider(provider) {
       if (!katakanaActive) {
+        await katakanaRuntime.setProvider(provider);
         return;
       }
-      katakanaActive = false;
       coordinator.disableKatakana();
-      await katakana.enable();
+      katakanaActive = false;
+      try {
+        await katakanaRuntime.setProvider(provider);
+        if (katakanaRuntime.active) {
+          coordinator.enableKatakana(katakanaRuntime);
+          katakanaActive = true;
+        }
+      } catch (error) {
+        katakanaRuntime.disable();
+        showStartupError("katakana", error);
+      } finally {
+        removeStylesIfUnused();
+      }
     },
   };
+
+  function showStartupError(feature, error) {
+    showStatus(localizer.t(`error.${feature}Startup`, { error: errorMessage(error) }), {
+      duration: 9000,
+      error: true,
+    });
+    logger?.error?.(`[YomiRuby] Refused to start ${feature} annotation`, error);
+  }
 
   function showStatus(message, { duration = 4000, error = false } = {}) {
     removeStatus();
@@ -149,26 +187,25 @@ export function createYomiRubySession({
   }
 
   function removeStylesIfUnused() {
-    if (!kanjiActive && !kanjiLoading && !katakanaActive && !statusElement) {
+    if (!kanjiActive && !kanjiDesired && !katakanaActive && !statusElement) {
       removeStyles?.();
       removeStyles = null;
     }
   }
 
   function stop() {
-    kanjiGeneration += 1;
-    kanjiAbortController?.abort();
-    kanjiAbortController = null;
+    kanjiDesired = false;
     kanjiActive = false;
-    kanjiLoading = false;
     katakanaActive = false;
+    kanjiRuntime.stop();
+    katakanaRuntime.stop();
     coordinator.stop();
     removeStatus();
     removeStyles?.();
     removeStyles = null;
   }
 
-  return { kanji, katakana, showStatus, stop };
+  return { kanji, katakana, showStatus, stop, kanjiRuntime, katakanaRuntime };
 }
 
 function errorMessage(error) {

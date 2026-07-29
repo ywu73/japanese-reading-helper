@@ -5,6 +5,8 @@ const SETTING_PREFIXES = Object.freeze({
 
 export const LOCALE_SETTING_KEY = "yomi-ruby:locale";
 export const SUPPORTED_LOCALES = Object.freeze(["en", "zh"]);
+export const KANJI_ROMAJI_MODE_SETTING_KEY = "yomi-ruby:kanji-romaji-mode";
+export const SUPPORTED_KANJI_ROMAJI_MODES = Object.freeze(["bing", "google", "local"]);
 export const TRANSLATION_PROVIDER_SETTING_KEY = "yomi-ruby:translation-provider";
 export const SUPPORTED_TRANSLATION_PROVIDERS = Object.freeze(["bing", "google"]);
 
@@ -14,6 +16,10 @@ export function isSupportedLocale(value) {
 
 export function isSupportedTranslationProvider(value) {
   return SUPPORTED_TRANSLATION_PROVIDERS.includes(value);
+}
+
+export function isSupportedKanjiRomajiMode(value) {
+  return SUPPORTED_KANJI_ROMAJI_MODES.includes(value);
 }
 
 export function originSettingKey(feature, origin) {
@@ -57,6 +63,71 @@ export async function setStoredTranslationProvider(gmSetValue, provider) {
     throw new TypeError(`Unsupported YomiRuby translation provider: ${provider}`);
   }
   await gmSetValue(TRANSLATION_PROVIDER_SETTING_KEY, provider);
+}
+
+export async function getStoredKanjiRomajiMode(gmGetValue) {
+  return gmGetValue(KANJI_ROMAJI_MODE_SETTING_KEY, null);
+}
+
+export async function setStoredKanjiRomajiMode(gmSetValue, mode) {
+  if (!isSupportedKanjiRomajiMode(mode)) {
+    throw new TypeError(`Unsupported YomiRuby kanji romaji mode: ${mode}`);
+  }
+  await gmSetValue(KANJI_ROMAJI_MODE_SETTING_KEY, mode);
+}
+
+export async function initializeKanjiRomajiMode({
+  getValue,
+  setValue,
+  primaryLanguage,
+}) {
+  let storedMode;
+  let storedLocale;
+  let storedTranslationProvider;
+  try {
+    [storedMode, storedLocale, storedTranslationProvider] = await Promise.all([
+      getStoredKanjiRomajiMode(getValue),
+      getStoredLocale(getValue),
+      getStoredTranslationProvider(getValue),
+    ]);
+  } catch (readError) {
+    return {
+      mode: "local",
+      readError,
+      persistenceError: null,
+    };
+  }
+
+  if (isSupportedKanjiRomajiMode(storedMode)) {
+    return {
+      mode: storedMode,
+      readError: null,
+      persistenceError: null,
+    };
+  }
+
+  const hasLegacySettings = storedMode != null
+    || storedLocale != null
+    || storedTranslationProvider != null;
+  const mode = hasLegacySettings
+    ? "local"
+    : typeof primaryLanguage === "string" && primaryLanguage.toLowerCase().startsWith("zh")
+      ? "bing"
+      : "google";
+  try {
+    await setStoredKanjiRomajiMode(setValue, mode);
+    return {
+      mode,
+      readError: null,
+      persistenceError: null,
+    };
+  } catch (persistenceError) {
+    return {
+      mode,
+      readError: null,
+      persistenceError,
+    };
+  }
 }
 
 export async function initializeTranslationProvider({ getValue, setValue, locale }) {

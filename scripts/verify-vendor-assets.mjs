@@ -12,7 +12,7 @@ function sha256(bytes) {
 const results = await Promise.all(assets.map(async (asset) => {
   const response = await fetch(asset.url, {
     redirect: "follow",
-    headers: { "user-agent": "yomi-ruby-vendor-verifier/0.4.0" },
+    headers: { "user-agent": "yomi-ruby-vendor-verifier/0.5.0" },
     signal: AbortSignal.timeout(120_000),
   });
   if (!response.ok) {

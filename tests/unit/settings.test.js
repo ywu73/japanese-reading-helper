@@ -3,9 +3,11 @@ import test from "node:test";
 
 import {
   getFeatureEnabledForOrigin,
+  initializeKanjiRomajiMode,
   initializeTranslationProvider,
   originSettingKey,
   setFeatureEnabledForOrigin,
+  setStoredKanjiRomajiMode,
   setStoredLocale,
   setStoredTranslationProvider,
 } from "../../src/settings.js";
@@ -62,6 +64,115 @@ test("the translation provider persistence boundary accepts only bing and google
     ["yomi-ruby:translation-provider", "bing"],
     ["yomi-ruby:translation-provider", "google"],
   ]);
+});
+
+test("the kanji romaji mode persistence boundary accepts only google, bing, and local", async () => {
+  const writes = [];
+  const setValue = async (...values) => writes.push(values);
+
+  await setStoredKanjiRomajiMode(setValue, "google");
+  await setStoredKanjiRomajiMode(setValue, "bing");
+  await setStoredKanjiRomajiMode(setValue, "local");
+  await assert.rejects(
+    setStoredKanjiRomajiMode(setValue, "azure"),
+    /Unsupported YomiRuby kanji romaji mode/u,
+  );
+
+  assert.deepEqual(writes, [
+    ["yomi-ruby:kanji-romaji-mode", "google"],
+    ["yomi-ruby:kanji-romaji-mode", "bing"],
+    ["yomi-ruby:kanji-romaji-mode", "local"],
+  ]);
+});
+
+test("fresh kanji mode initialization uses the language-derived online provider", async () => {
+  for (const [primaryLanguage, expected] of [["zh-CN", "bing"], ["en-US", "google"]]) {
+    const writes = [];
+    const result = await initializeKanjiRomajiMode({
+      getValue: async (_key, fallback) => fallback,
+      setValue: async (...values) => writes.push(values),
+      primaryLanguage,
+    });
+
+    assert.deepEqual(result, {
+      mode: expected,
+      readError: null,
+      persistenceError: null,
+    });
+    assert.deepEqual(writes, [["yomi-ruby:kanji-romaji-mode", expected]]);
+  }
+});
+
+test("an upgrade without a kanji mode migrates to local without expanding disclosure", async () => {
+  for (const legacyKey of ["yomi-ruby:locale", "yomi-ruby:translation-provider"]) {
+    const writes = [];
+    const result = await initializeKanjiRomajiMode({
+      getValue: async (key, fallback) => key === legacyKey ? "legacy-value" : fallback,
+      setValue: async (...values) => writes.push(values),
+      primaryLanguage: "zh-CN",
+    });
+
+    assert.deepEqual(result, {
+      mode: "local",
+      readError: null,
+      persistenceError: null,
+    });
+    assert.deepEqual(writes, [["yomi-ruby:kanji-romaji-mode", "local"]]);
+  }
+});
+
+test("kanji mode initialization keeps a valid value and repairs an invalid value to local", async () => {
+  const validWrites = [];
+  const valid = await initializeKanjiRomajiMode({
+    getValue: async (key, fallback) => key === "yomi-ruby:kanji-romaji-mode" ? "google" : fallback,
+    setValue: async (...values) => validWrites.push(values),
+    primaryLanguage: "zh-CN",
+  });
+  assert.deepEqual(valid, {
+    mode: "google",
+    readError: null,
+    persistenceError: null,
+  });
+  assert.deepEqual(validWrites, []);
+
+  const repairWrites = [];
+  const repaired = await initializeKanjiRomajiMode({
+    getValue: async (key, fallback) => key === "yomi-ruby:kanji-romaji-mode" ? "azure" : fallback,
+    setValue: async (...values) => repairWrites.push(values),
+    primaryLanguage: "en-US",
+  });
+  assert.deepEqual(repaired, {
+    mode: "local",
+    readError: null,
+    persistenceError: null,
+  });
+  assert.deepEqual(repairWrites, [["yomi-ruby:kanji-romaji-mode", "local"]]);
+});
+
+test("kanji mode storage failures stay local when installation history is uncertain", async () => {
+  const readError = new Error("storage unavailable");
+  const failedRead = await initializeKanjiRomajiMode({
+    getValue: async () => { throw readError; },
+    setValue: async () => assert.fail("a failed read must not be followed by a write"),
+    primaryLanguage: "en-US",
+  });
+  assert.deepEqual(failedRead, {
+    mode: "local",
+    readError,
+    persistenceError: null,
+  });
+
+  const writeError = new Error("storage denied");
+  const failedWrite = await initializeKanjiRomajiMode({
+    getValue: async (key, fallback) => key === "yomi-ruby:locale" ? "en" : fallback,
+    setValue: async () => { throw writeError; },
+    primaryLanguage: "en-US",
+  });
+  assert.deepEqual(failedWrite, {
+    mode: "local",
+    readError: null,
+    persistenceError: writeError,
+  });
 });
 
 test("provider initialization keeps a valid stored provider without another write", async () => {

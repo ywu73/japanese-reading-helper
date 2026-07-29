@@ -4,13 +4,16 @@ const MESSAGES = Object.freeze({
   en: Object.freeze({
     "menu.enableKanji": "Enable Kanji Romaji on this site",
     "menu.disableKanji": "Disable Kanji Romaji on this site",
+    "menu.kanjiRomajiMode": ({ mode, nextMode }) => `Kanji Romaji: ${kanjiModeName(mode, "en")} (switch to ${kanjiModeName(nextMode, "en")})`,
     "menu.enableKatakana": "Enable Online Katakana English on this site",
     "menu.disableKatakana": "Disable Online Katakana English on this site",
-    "menu.translationProvider": ({ nextProvider }) => `Katakana Translator: Switch to ${providerName(nextProvider)}`,
+    "menu.translationProvider": ({ provider, nextProvider }) => `Katakana Translator: ${providerName(provider)} (switch to ${providerName(nextProvider)})`,
     "menu.language": "语言 / Language: 切换到简体中文",
     "error.localePersistence": ({ error }) => `Could not save the language setting: ${error}`,
     "error.translationProviderPersistence": ({ error }) => `Could not save the translation provider: ${error}. The previous provider remains active.`,
     "error.translationProviderRead": ({ error }) => `Could not read the translation provider setting. This page is using the locale-derived default: ${error}`,
+    "error.kanjiRomajiModePersistence": ({ error }) => `Could not save the Kanji Romaji mode: ${error}. The previous mode remains active.`,
+    "error.kanjiRomajiModeRead": ({ error }) => `Could not read the Kanji Romaji mode. This page is using Local Dictionary: ${error}`,
     "error.kanjiEnablePersistence": ({ error }) => `Could not save the Kanji Romaji setting: ${error}. The feature remains disabled.`,
     "error.kanjiDisablePersistence": ({ error }) => `Could not save the Kanji Romaji setting: ${error}. This page is disabled, but the feature may start again after reload.`,
     "error.katakanaEnablePersistence": ({ error }) => `Could not save the Online Katakana English setting: ${error}. The feature remains disabled.`,
@@ -23,13 +26,16 @@ const MESSAGES = Object.freeze({
   zh: Object.freeze({
     "menu.enableKanji": "开启本网站汉字罗马音",
     "menu.disableKanji": "关闭本网站汉字罗马音",
+    "menu.kanjiRomajiMode": ({ mode, nextMode }) => `汉字罗马音模式：${kanjiModeName(mode, "zh")}（切换到${kanjiModeName(nextMode, "zh")}）`,
     "menu.enableKatakana": "开启本网站联网片假名英文",
     "menu.disableKatakana": "关闭本网站联网片假名英文",
-    "menu.translationProvider": ({ nextProvider }) => `片假名翻译服务：切换到 ${providerName(nextProvider)}`,
+    "menu.translationProvider": ({ provider, nextProvider }) => `片假名翻译服务：${providerName(provider)}（切换到 ${providerName(nextProvider)}）`,
     "menu.language": "语言 / Language: Switch to English",
     "error.localePersistence": ({ error }) => `无法保存语言设置：${error}`,
     "error.translationProviderPersistence": ({ error }) => `无法保存片假名翻译服务设置：${error}。继续使用原服务。`,
     "error.translationProviderRead": ({ error }) => `无法读取片假名翻译服务设置，本页使用语言对应的默认服务：${error}`,
+    "error.kanjiRomajiModePersistence": ({ error }) => `无法保存汉字罗马音模式：${error}。继续使用原模式。`,
+    "error.kanjiRomajiModeRead": ({ error }) => `无法读取汉字罗马音模式，本页使用本地字典：${error}`,
     "error.kanjiEnablePersistence": ({ error }) => `无法保存本网站汉字罗马音设置：${error}。功能保持关闭。`,
     "error.kanjiDisablePersistence": ({ error }) => `无法保存本网站汉字罗马音设置：${error}。本页已关闭，但刷新后可能再次启用。`,
     "error.katakanaEnablePersistence": ({ error }) => `无法保存本网站联网片假名英文设置：${error}。功能保持关闭。`,
@@ -43,6 +49,16 @@ const MESSAGES = Object.freeze({
 
 function providerName(provider) {
   return provider === "bing" ? "Bing" : "Google";
+}
+
+function kanjiModeName(mode, locale) {
+  if (mode === "bing") {
+    return "Bing";
+  }
+  if (mode === "local") {
+    return locale === "zh" ? "本地字典" : "Local Dictionary";
+  }
+  return "Google";
 }
 
 export function createLocalizer(initialLocale = "en", messages = MESSAGES) {

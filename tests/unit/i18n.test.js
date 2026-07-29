@@ -98,8 +98,8 @@ test("the localizer renders the opposite translation provider and provider persi
   const localizer = createLocalizer("en");
 
   assert.equal(
-    localizer.t("menu.translationProvider", { nextProvider: "bing" }),
-    "Katakana Translator: Switch to Bing",
+    localizer.t("menu.translationProvider", { provider: "google", nextProvider: "bing" }),
+    "Katakana Translator: Google (switch to Bing)",
   );
   assert.equal(
     localizer.t("error.translationProviderPersistence", { error: "storage denied" }),
@@ -108,12 +108,30 @@ test("the localizer renders the opposite translation provider and provider persi
 
   localizer.setLocale("zh");
   assert.equal(
-    localizer.t("menu.translationProvider", { nextProvider: "google" }),
-    "片假名翻译服务：切换到 Google",
+    localizer.t("menu.translationProvider", { provider: "bing", nextProvider: "google" }),
+    "片假名翻译服务：Bing（切换到 Google）",
   );
   assert.equal(
     localizer.t("error.translationProviderRead", { error: "storage unavailable" }),
     "无法读取片假名翻译服务设置，本页使用语言对应的默认服务：storage unavailable",
+  );
+});
+
+test("the localizer renders the current kanji mode and the locale-ordered next action", () => {
+  const localizer = createLocalizer("en");
+  assert.equal(
+    localizer.t("menu.kanjiRomajiMode", { mode: "google", nextMode: "local" }),
+    "Kanji Romaji: Google (switch to Local Dictionary)",
+  );
+  assert.equal(
+    localizer.t("error.kanjiRomajiModePersistence", { error: "storage denied" }),
+    "Could not save the Kanji Romaji mode: storage denied. The previous mode remains active.",
+  );
+
+  localizer.setLocale("zh");
+  assert.equal(
+    localizer.t("menu.kanjiRomajiMode", { mode: "local", nextMode: "google" }),
+    "汉字罗马音模式：本地字典（切换到Google）",
   );
 });
 

@@ -11,8 +11,9 @@ test("an unconfigured origin exposes independent kanji and katakana commands wit
   assert.deepEqual(harness.starts, { kanji: 0, katakana: 0 });
   assert.deepEqual(harness.menu.labels(), [
     "Enable Kanji Romaji on this site",
+    "Kanji Romaji: Google (switch to Local Dictionary)",
     "Enable Online Katakana English on this site",
-    "Katakana Translator: Switch to Bing",
+    "Katakana Translator: Google (switch to Bing)",
     "语言 / Language: 切换到简体中文",
   ]);
 });
@@ -29,8 +30,9 @@ test("the 0.1.4 origin setting enables only kanji and legacy JRR state remains i
   assert.deepEqual(harness.starts, { kanji: 1, katakana: 0 });
   assert.deepEqual(harness.menu.labels(), [
     "Disable Kanji Romaji on this site",
+    "Kanji Romaji: Google (switch to Local Dictionary)",
     "Enable Online Katakana English on this site",
-    "Katakana Translator: Switch to Bing",
+    "Katakana Translator: Google (switch to Bing)",
     "语言 / Language: 切换到简体中文",
   ]);
   assert.equal(harness.stored.has("yomi-ruby:katakana-origin:https://x.com"), false);
@@ -61,8 +63,9 @@ test("language switching persists globally and immediately re-registers all menu
   assert.deepEqual(harness.stops, { kanji: 0, katakana: 0 });
   assert.deepEqual(harness.menu.labels(), [
     "开启本网站汉字罗马音",
+    "汉字罗马音模式：Google（切换到Bing）",
     "开启本网站联网片假名英文",
-    "片假名翻译服务：切换到 Bing",
+    "片假名翻译服务：Google（切换到 Bing）",
     "语言 / Language: Switch to English",
   ]);
 });
@@ -74,8 +77,9 @@ test("a first-run locale persistence failure keeps deterministic localized menus
 
   assert.deepEqual(harness.menu.labels(), [
     "开启本网站汉字罗马音",
+    "汉字罗马音模式：Bing（切换到本地字典）",
     "开启本网站联网片假名英文",
-    "片假名翻译服务：切换到 Bing",
+    "片假名翻译服务：Google（切换到 Bing）",
     "语言 / Language: Switch to English",
   ]);
   assert.deepEqual(harness.statuses, [{
@@ -98,7 +102,7 @@ test("provider initialization errors are localized without starting either featu
     message: "无法读取片假名翻译服务设置，本页使用语言对应的默认服务：storage unavailable",
     options: { duration: 9000, error: true },
   }]);
-  assert.ok(harness.menu.labels().includes("片假名翻译服务：切换到 Google"));
+  assert.ok(harness.menu.labels().includes("片假名翻译服务：Bing（切换到 Google）"));
 });
 
 test("rapid language switches converge on the final requested locale without changing feature state", async () => {
@@ -117,8 +121,7 @@ test("rapid language switches converge on the final requested locale without cha
   await harness.install();
 
   const switchingToZh = harness.menu.invoke("语言 / Language: 切换到简体中文");
-  await waitFor(() => harness.menu.labels().includes("语言 / Language: Switch to English"));
-  const switchingBackToEn = harness.menu.invoke("语言 / Language: Switch to English");
+  const switchingBackToEn = harness.menu.invoke("语言 / Language: 切换到简体中文");
 
   firstWrite.resolve();
   await Promise.resolve();
@@ -130,8 +133,9 @@ test("rapid language switches converge on the final requested locale without cha
   assert.deepEqual(harness.stops, { kanji: 0, katakana: 0 });
   assert.deepEqual(harness.menu.labels(), [
     "Enable Kanji Romaji on this site",
+    "Kanji Romaji: Google (switch to Local Dictionary)",
     "Enable Online Katakana English on this site",
-    "Katakana Translator: Switch to Bing",
+    "Katakana Translator: Google (switch to Bing)",
     "语言 / Language: 切换到简体中文",
   ]);
 });
@@ -146,8 +150,9 @@ test("a failed manual language write restores the persisted locale and reports o
 
   assert.deepEqual(harness.menu.labels(), [
     "Enable Kanji Romaji on this site",
+    "Kanji Romaji: Google (switch to Local Dictionary)",
     "Enable Online Katakana English on this site",
-    "Katakana Translator: Switch to Bing",
+    "Katakana Translator: Google (switch to Bing)",
     "语言 / Language: 切换到简体中文",
   ]);
   assert.deepEqual(harness.statuses, [{
@@ -165,7 +170,7 @@ test("a failed katakana enable write stays fail closed and restores its enable c
   await harness.menu.invoke("Enable Online Katakana English on this site");
 
   assert.equal(harness.starts.katakana, 0);
-  assert.equal(harness.stops.katakana, 1);
+  assert.equal(harness.stops.katakana, 0);
   assert.ok(harness.menu.labels().includes("Enable Online Katakana English on this site"));
   assert.equal(
     harness.statuses.at(-1).message,
@@ -189,8 +194,9 @@ test("a feature setting read failure keeps that feature off and still exposes al
   assert.deepEqual(harness.starts, { kanji: 0, katakana: 0 });
   assert.deepEqual(harness.menu.labels(), [
     "Enable Kanji Romaji on this site",
+    "Kanji Romaji: Google (switch to Local Dictionary)",
     "Enable Online Katakana English on this site",
-    "Katakana Translator: Switch to Bing",
+    "Katakana Translator: Google (switch to Bing)",
     "语言 / Language: 切换到简体中文",
   ]);
   assert.deepEqual(harness.statuses, [{
@@ -216,8 +222,9 @@ test("disabling one stored feature leaves the other active and changes only its 
   assert.equal(harness.stored.get("yomi-ruby:katakana-origin:https://x.com"), false);
   assert.deepEqual(harness.menu.labels(), [
     "Disable Kanji Romaji on this site",
+    "Kanji Romaji: Google (switch to Local Dictionary)",
     "Enable Online Katakana English on this site",
-    "Katakana Translator: Switch to Bing",
+    "Katakana Translator: Google (switch to Bing)",
     "语言 / Language: 切换到简体中文",
   ]);
 });
@@ -236,8 +243,7 @@ test("rapid katakana enable then disable leaves persistence and runtime in the f
   await harness.install();
 
   const enabling = harness.menu.invoke("Enable Online Katakana English on this site");
-  await waitFor(() => harness.menu.labels().includes("Disable Online Katakana English on this site"));
-  const disabling = harness.menu.invoke("Disable Online Katakana English on this site");
+  const disabling = harness.menu.invoke("Enable Online Katakana English on this site");
   enableGate.resolve();
   await Promise.resolve();
   disableGate.resolve();
@@ -263,9 +269,7 @@ test("rapid katakana enable, disable, and enable converges on the final on state
   await harness.install();
 
   const firstEnable = harness.menu.invoke("Enable Online Katakana English on this site");
-  await waitFor(() => harness.menu.labels().includes("Disable Online Katakana English on this site"));
-  const disable = harness.menu.invoke("Disable Online Katakana English on this site");
-  await waitFor(() => harness.menu.labels().includes("Enable Online Katakana English on this site"));
+  const disable = harness.menu.invoke("Enable Online Katakana English on this site");
   const finalEnable = harness.menu.invoke("Enable Online Katakana English on this site");
 
   gates[0].resolve();
@@ -277,7 +281,7 @@ test("rapid katakana enable, disable, and enable converges on the final on state
 
   assert.equal(harness.stored.get("yomi-ruby:katakana-origin:https://x.com"), true);
   assert.equal(harness.starts.katakana, 1);
-  assert.equal(harness.stops.katakana, 1);
+  assert.equal(harness.stops.katakana, 0);
   assert.ok(harness.menu.labels().includes("Disable Online Katakana English on this site"));
 });
 
@@ -295,10 +299,8 @@ test("feature and language operations interleave through one queue and converge 
   await harness.install();
 
   const enabling = harness.menu.invoke("Enable Online Katakana English on this site");
-  await waitFor(() => harness.menu.labels().includes("Disable Online Katakana English on this site"));
   const switching = harness.menu.invoke("语言 / Language: 切换到简体中文");
-  await waitFor(() => harness.menu.labels().includes("关闭本网站联网片假名英文"));
-  const disabling = harness.menu.invoke("关闭本网站联网片假名英文");
+  const disabling = harness.menu.invoke("Enable Online Katakana English on this site");
 
   gates[0].resolve();
   await waitFor(() => writes.length === 2);
@@ -316,8 +318,9 @@ test("feature and language operations interleave through one queue and converge 
   assert.equal(harness.stops.katakana, 1);
   assert.deepEqual(harness.menu.labels(), [
     "开启本网站汉字罗马音",
+    "汉字罗马音模式：Google（切换到Bing）",
     "开启本网站联网片假名英文",
-    "片假名翻译服务：切换到 Bing",
+    "片假名翻译服务：Google（切换到 Bing）",
     "语言 / Language: Switch to English",
   ]);
 });
@@ -327,17 +330,47 @@ test("provider switching persists before replacing the translator and stays iner
   const harness = createControlsHarness({ events });
   await harness.install();
 
-  await harness.menu.invoke("Katakana Translator: Switch to Bing");
+  await harness.menu.invoke("Katakana Translator: Google (switch to Bing)");
 
   assert.equal(harness.stored.get("yomi-ruby:translation-provider"), "bing");
   assert.deepEqual(events, ["persist:provider:bing", "translator:bing"]);
   assert.deepEqual(harness.starts, { kanji: 0, katakana: 0 });
   assert.deepEqual(harness.menu.labels(), [
     "Enable Kanji Romaji on this site",
+    "Kanji Romaji: Google (switch to Local Dictionary)",
     "Enable Online Katakana English on this site",
-    "Katakana Translator: Switch to Google",
+    "Katakana Translator: Bing (switch to Google)",
     "语言 / Language: 切换到简体中文",
   ]);
+});
+
+test("kanji mode switching follows the current locale cycle and persists before replacement", async () => {
+  const events = [];
+  const harness = createControlsHarness({ events });
+  await harness.install();
+
+  await harness.menu.invoke("Kanji Romaji: Google (switch to Local Dictionary)");
+  assert.equal(harness.stored.get("yomi-ruby:kanji-romaji-mode"), "local");
+  assert.deepEqual(harness.kanjiModeSwitches, ["local"]);
+  assert.deepEqual(events, ["persist:kanji-mode:local", "kanji-mode:local"]);
+
+  await harness.menu.invoke("语言 / Language: 切换到简体中文");
+  assert.ok(harness.menu.labels().includes("汉字罗马音模式：本地字典（切换到Google）"));
+});
+
+test("remote global mode changes replace only their matching active path without write loops", async () => {
+  const harness = createControlsHarness();
+  await harness.install();
+
+  await harness.emitRemote("yomi-ruby:kanji-romaji-mode", "bing");
+  await harness.emitRemote("yomi-ruby:translation-provider", "bing");
+
+  assert.deepEqual(harness.kanjiModeSwitches, ["bing"]);
+  assert.deepEqual(harness.providerSwitches, ["bing"]);
+  assert.equal(harness.stored.has("yomi-ruby:kanji-romaji-mode"), false);
+  assert.equal(harness.stored.has("yomi-ruby:translation-provider"), false);
+  assert.ok(harness.menu.labels().includes("Kanji Romaji: Bing (switch to Google)"));
+  assert.ok(harness.menu.labels().includes("Katakana Translator: Bing (switch to Google)"));
 });
 
 test("a failed provider write restores the persisted provider and never replaces the translator", async () => {
@@ -350,10 +383,10 @@ test("a failed provider write restores the persisted provider and never replaces
   });
   await harness.install();
 
-  await harness.menu.invoke("Katakana Translator: Switch to Bing");
+  await harness.menu.invoke("Katakana Translator: Google (switch to Bing)");
 
   assert.deepEqual(harness.providerSwitches, []);
-  assert.ok(harness.menu.labels().includes("Katakana Translator: Switch to Bing"));
+  assert.ok(harness.menu.labels().includes("Katakana Translator: Google (switch to Bing)"));
   assert.equal(
     harness.statuses.at(-1).message,
     "Could not save the translation provider: storage denied. The previous provider remains active.",
@@ -373,11 +406,13 @@ test("rapid provider switches converge on the final persisted provider without s
   });
   await harness.install();
 
-  const toBing = harness.menu.invoke("Katakana Translator: Switch to Bing");
-  await waitFor(() => harness.menu.labels().includes("Katakana Translator: Switch to Google"));
-  const toGoogle = harness.menu.invoke("Katakana Translator: Switch to Google");
-  await waitFor(() => harness.menu.labels().includes("Katakana Translator: Switch to Bing"));
-  const finalBing = harness.menu.invoke("Katakana Translator: Switch to Bing");
+  const toBing = harness.menu.invoke("Katakana Translator: Google (switch to Bing)");
+  const toGoogle = harness.menu.invoke("Katakana Translator: Google (switch to Bing)");
+  const finalBing = harness.menu.invoke("Katakana Translator: Google (switch to Bing)");
+  assert.ok(
+    harness.menu.labels().includes("Katakana Translator: Google (switch to Bing)"),
+    "the menu continues to show the persisted provider while writes are pending",
+  );
 
   gates[0].resolve();
   await waitFor(() => writes.length === 2);
@@ -405,16 +440,18 @@ function createControlsHarness({
   translationProvider = "google",
   translationProviderReadError = null,
   translationProviderPersistenceError = null,
+  kanjiRomajiMode = locale === "zh" ? "bing" : "google",
+  kanjiRomajiModeReadError = null,
+  kanjiRomajiModePersistenceError = null,
 } = {}) {
   const menu = createMenuHarness();
   const starts = { kanji: 0, katakana: 0 };
   const stops = { kanji: 0, katakana: 0 };
   const statuses = [];
   const providerSwitches = [];
-  const translationProviderFactories = {
-    bing: () => Object.assign(async () => new Map(), { provider: "bing" }),
-    google: () => Object.assign(async () => new Map(), { provider: "google" }),
-  };
+  const kanjiModeSwitches = [];
+  const valueListeners = new Map();
+  let nextListenerId = 1;
   const harness = {
     menu,
     stored,
@@ -422,6 +459,11 @@ function createControlsHarness({
     stops,
     statuses,
     providerSwitches,
+    kanjiModeSwitches,
+    async emitRemote(key, value) {
+      const callbacks = [...valueListeners.values()].filter((listener) => listener.key === key);
+      await Promise.all(callbacks.map(({ callback }) => callback(key, undefined, value, true)));
+    },
     async install() {
       await installYomiRubyControls({
         origin: "https://x.com",
@@ -433,21 +475,38 @@ function createControlsHarness({
           const setting = key === "yomi-ruby:locale"
             ? "locale"
             : key === "yomi-ruby:translation-provider" ? "provider"
+            : key === "yomi-ruby:kanji-romaji-mode" ? "kanji-mode"
             : key.includes("katakana") ? "katakana" : "kanji";
           events.push(`persist:${setting}:${value}`);
         }),
+        addValueChangeListener(key, callback) {
+          const id = nextListenerId++;
+          valueListeners.set(id, { key, callback });
+          return id;
+        },
+        removeValueChangeListener(id) {
+          valueListeners.delete(id);
+        },
         localizer: createLocalizer(locale),
         localePersistenceError,
+        kanjiRomajiMode,
+        kanjiRomajiModeReadError,
+        kanjiRomajiModePersistenceError,
         translationProvider,
         translationProviderReadError,
         translationProviderPersistenceError,
-        translationProviderFactories,
-        kanji: featureSession("kanji", starts, stops, events),
+        kanji: {
+          ...featureSession("kanji", starts, stops, events),
+          async setMode(mode) {
+            kanjiModeSwitches.push(mode);
+            events.push(`kanji-mode:${mode}`);
+          },
+        },
         katakana: {
           ...featureSession("katakana", starts, stops, events),
-          async setTranslator(translator) {
-            providerSwitches.push(translator.provider);
-            events.push(`translator:${translator.provider}`);
+          async setProvider(provider) {
+            providerSwitches.push(provider);
+            events.push(`translator:${provider}`);
           },
         },
         showStatus: (message, options) => statuses.push({ message, options }),

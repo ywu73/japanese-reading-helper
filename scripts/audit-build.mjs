@@ -4,6 +4,10 @@ import { asLineComments } from "./legal-comments.mjs";
 
 const projectRoot = new URL("../", import.meta.url);
 const source = await readFile(new URL("dist/yomi-ruby.user.js", projectRoot), "utf8");
+const coordinatorSource = await readFile(new URL("src/coordinator.js", projectRoot), "utf8");
+const bingTranslationSource = await readFile(new URL("src/bing-translation.js", projectRoot), "utf8");
+const kanjiRuntimeSource = await readFile(new URL("src/kanji-runtime.js", projectRoot), "utf8");
+const katakanaRuntimeSource = await readFile(new URL("src/katakana-runtime.js", projectRoot), "utf8");
 const manifest = JSON.parse(await readFile(new URL("vendor/manifest.json", projectRoot), "utf8"));
 const packageJson = JSON.parse(await readFile(new URL("package.json", projectRoot), "utf8"));
 const legalFiles = [
@@ -20,15 +24,15 @@ assert.notEqual(metadataEnd, -1, "Userscript metadata block is incomplete.");
 const metadata = source.slice(0, metadataEnd);
 const runtime = source.slice(metadataEnd);
 
-assert.equal(packageJson.version, "0.4.0");
+assert.equal(packageJson.version, "0.5.0");
 assert.equal(packageJson.private, true);
 assert.equal(packageJson.license, "MIT");
 assert.match(metadata, /^\/\/ @name\s+YomiRuby$/mu);
 assert.match(metadata, /^\/\/ @name:zh-CN\s+日语网页注音助手$/mu);
 assert.match(metadata, /^\/\/ @namespace\s+yomi-ruby\.local$/mu);
-assert.match(metadata, /^\/\/ @version\s+0\.4\.0$/mu);
-assert.match(metadata, /^\/\/ @description\s+Add local Kanji Romaji and optional online Katakana English ruby to Japanese web text\.$/mu);
-assert.match(metadata, /^\/\/ @description:zh-CN\s+为日语网页添加本地汉字罗马音和可选的联网片假名英文注音。$/mu);
+assert.match(metadata, /^\/\/ @version\s+0\.5\.0$/mu);
+assert.match(metadata, /^\/\/ @description\s+Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text\.$/mu);
+assert.match(metadata, /^\/\/ @description:zh-CN\s+为日语网页添加可选本地或联网汉字罗马音，以及可选的联网片假名英文注音。$/mu);
 assert.match(metadata, /^\/\/ @homepageURL\s+https:\/\/github\.com\/ywu73\/yomi-ruby$/mu);
 assert.match(metadata, /^\/\/ @supportURL\s+https:\/\/github\.com\/ywu73\/yomi-ruby\/issues$/mu);
 assert.match(metadata, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/ywu73\/yomi-ruby\/main\/dist\/yomi-ruby\.user\.js$/mu);
@@ -53,6 +57,8 @@ assert.deepEqual(grantLines, [
   "// @grant        GM_unregisterMenuCommand",
   "// @grant        GM_getValue",
   "// @grant        GM_setValue",
+  "// @grant        GM_addValueChangeListener",
+  "// @grant        GM_removeValueChangeListener",
 ]);
 assert.doesNotMatch(source, /@require/u);
 assert.doesNotMatch(source, /fetch\s*\(|XMLHttpRequest|WebSocket|EventSource/u);
@@ -65,15 +71,21 @@ assert.doesNotMatch(source, /globalThis\.confirm|confirmKatakana|KATAKANA_CONSEN
 for (const menuCopy of [
   "Enable Kanji Romaji on this site",
   "Disable Kanji Romaji on this site",
+  "Kanji Romaji: ",
+  "Local Dictionary",
   "Enable Online Katakana English on this site",
   "Disable Online Katakana English on this site",
-  "Katakana Translator: Switch to ",
+  "Katakana Translator: ",
+  "(switch to ",
   "语言 / Language: 切换到简体中文",
   "开启本网站汉字罗马音",
   "关闭本网站汉字罗马音",
+  "汉字罗马音模式：",
+  "本地字典",
   "开启本网站联网片假名英文",
   "关闭本网站联网片假名英文",
-  "片假名翻译服务：切换到 ",
+  "片假名翻译服务：",
+  "（切换到 ",
   "语言 / Language: Switch to English",
 ]) {
   assert.ok(source.includes(menuCopy), `Missing exact menu copy: ${menuCopy}`);
@@ -86,19 +98,25 @@ for (const forbiddenStatus of [
   assert.ok(!source.includes(forbiddenStatus), `Normal-operation status copy remains: ${forbiddenStatus}`);
 }
 assert.equal(
+  [...runtime.matchAll(/registerMenuCommand\(\s*localizer\d*\.t\("menu\.kanjiRomajiMode"/gu)].length,
+  1,
+  "Expected exactly one kanji-romaji-mode menu command.",
+);
+assert.equal(
   [...runtime.matchAll(/registerMenuCommand\(\s*localizer\d*\.t\("menu\.translationProvider"/gu)].length,
   1,
   "Expected exactly one translation-provider menu command.",
 );
 assert.match(
   runtime,
-  /refreshMenus = \(\) => \{\s*for \(const control of controls\) \{\s*control\.register\(\);\s*\}\s*registerProvider\(\);\s*registerLanguage\(\);\s*\}/su,
-  "Expected stable Kanji, Katakana, provider, language menu order.",
+  /refreshMenus = \(\) => \{\s*controls\[0\]\.register\(\);\s*registerKanjiMode\(\);\s*controls\[1\]\.register\(\);\s*registerProvider\(\);\s*registerLanguage\(\);\s*\}/su,
+  "Expected stable Kanji, Kanji Mode, Katakana, provider, language menu order.",
 );
 for (const storageKey of [
   "yomi-ruby:auto-origin:",
   "yomi-ruby:katakana-origin:",
   "yomi-ruby:locale",
+  "yomi-ruby:kanji-romaji-mode",
   "yomi-ruby:translation-provider",
 ]) {
   assert.ok(source.includes(storageKey), `Missing approved storage key: ${storageKey}`);
@@ -108,20 +126,27 @@ const yomiRubyStorageLiterals = [...new Set(
 )].sort();
 assert.deepEqual(yomiRubyStorageLiterals, [
   "yomi-ruby:auto-origin:",
+  "yomi-ruby:kanji-romaji-mode",
   "yomi-ruby:katakana-origin:",
   "yomi-ruby:locale",
   "yomi-ruby:translation-provider",
 ]);
-assert.equal([...source.matchAll(/\bgmGetValue\(/gu)].length, 3, "Expected only feature, locale, and provider GM reads.");
-assert.equal([...source.matchAll(/\bgmSetValue\(/gu)].length, 3, "Expected only feature, locale, and provider GM writes.");
-assert.equal([...source.matchAll(/\bGM_(?:get|set)Value\b/gu)].length, 8, "Unexpected direct GM storage access.");
+assert.equal([...source.matchAll(/\bgmGetValue\(/gu)].length, 4, "Expected only feature, locale, kanji-mode, and provider GM reads.");
+assert.equal([...source.matchAll(/\bgmSetValue\(/gu)].length, 4, "Expected only feature, locale, kanji-mode, and provider GM writes.");
+assert.equal([...source.matchAll(/\bGM_(?:get|set)Value\b/gu)].length, 10, "Unexpected direct GM storage access.");
 assert.match(source, /gmGetValue\(originSettingKey\(feature, origin\), false\) === true/u);
 assert.match(source, /gmSetValue\(originSettingKey\(feature, origin\), Boolean\(enabled\)\)/u);
 assert.match(source, /gmGetValue\(LOCALE_SETTING_KEY, null\)/u);
 assert.match(source, /gmSetValue\(LOCALE_SETTING_KEY, locale\)/u);
 assert.match(source, /gmGetValue\(TRANSLATION_PROVIDER_SETTING_KEY, null\)/u);
 assert.match(source, /gmSetValue\(TRANSLATION_PROVIDER_SETTING_KEY, provider\)/u);
+assert.match(source, /gmGetValue\(KANJI_ROMAJI_MODE_SETTING_KEY, null\)/u);
+assert.match(source, /gmSetValue\(KANJI_ROMAJI_MODE_SETTING_KEY, mode\)/u);
 assert.match(source, /Object\.freeze\(\["bing", "google"\]\)/u);
+assert.match(source, /Object\.freeze\(\["bing", "google", "local"\]\)/u);
+assert.match(runtime, /addValueChangeListener\(\s*KANJI_ROMAJI_MODE_SETTING_KEY/gu);
+assert.match(runtime, /addValueChangeListener\(\s*TRANSLATION_PROVIDER_SETTING_KEY/gu);
+assert.match(runtime, /remote !== true/gu);
 assert.doesNotMatch(source, /japanese-romaji-ruby\.local|jrr:auto-origin:|data-jrr-|\bjrr-/iu);
 assert.match(source, /navigator\.languages/iu);
 assert.match(source, /data-yomi-ruby-generated/u);
@@ -129,31 +154,61 @@ assert.match(source, /data-yomi-ruby-feature/u);
 
 assert.equal(
   [...runtime.matchAll(/https:\/\/translate\.googleapis\.com\/translate_a\/single/g)].length,
-  1,
-  "Expected one fixed Google Translate endpoint in the runtime.",
+  2,
+  "Expected one fixed Google endpoint per katakana and kanji adapter.",
 );
 assert.equal(
   [...runtime.matchAll(/https:\/\/www\.bing\.com\/translator/g)].length,
-  1,
-  "Expected one fixed Bing initialization URL in the runtime.",
+  2,
+  "Expected one fixed Bing initialization URL per katakana and kanji adapter.",
 );
 assert.equal(
   [...runtime.matchAll(/["']\/ttranslatev3["']/g)].length,
-  1,
-  "Expected one fixed Bing translation path in the runtime.",
+  2,
+  "Expected one fixed Bing translation path per katakana and kanji adapter.",
 );
-assert.match(runtime, /new Set\(\["www\.bing\.com", "cn\.bing\.com"\]\)/u);
+assert.equal([...runtime.matchAll(/new Set\(\["www\.bing\.com", "cn\.bing\.com"\]\)/gu)].length, 2);
 assert.doesNotMatch(metadata, /@connect\s+(?:\*|\.bing\.com|\*\.bing\.com)/u);
 assert.match(runtime, /querySelectorAll\("#rich_tta\[data-iid\]"\)/u);
 assert.match(runtime, /params_AbusePreventionHelper/u);
+assert.match(runtime, /MAX_GLOBAL_OBJECT_CHARACTERS/u);
+assert.match(runtime, /inputTransliteration/u);
+assert.match(runtime, /MAX_TRANSLITERATION_CHARACTERS/u);
+assert.match(bingTranslationSource, /maxPhrasesPerRequest = 50/u);
+assert.match(bingTranslationSource, /maxEncodedTextLength = 1800/u);
+assert.match(bingTranslationSource, /minimumIntervalMs = 250/u);
+assert.match(bingTranslationSource, /requestTimeoutMs = 8000/u);
+assert.match(bingTranslationSource, /text: phrases\.join\("\\n"\)/u);
+assert.match(bingTranslationSource, /candidate\.text\.split\(\/\\r\?\\n\/u\)/u);
+assert.match(bingTranslationSource, /translatedLines\.length !== phrases\.length/u);
 assert.match(runtime, /response\.finalUrl \?\? response\.responseURL/u);
 assert.match(runtime, /anonymous: true/u);
-assert.equal([...runtime.matchAll(/redirect: "follow"/gu)].length, 1);
-assert.equal([...runtime.matchAll(/redirect: "error"/gu)].length, 1);
+assert.doesNotMatch(runtime, /user-agent|User-Agent/u);
+assert.equal([...runtime.matchAll(/redirect: "follow"/gu)].length, 2);
+assert.equal([...runtime.matchAll(/redirect: "error"/gu)].length, 3);
 assert.match(runtime, /validateTranslationResponseUrl\(response\.finalUrl \?\? response\.responseURL, url\)/u);
 assert.match(runtime, /!Number\.isInteger\(response\?\.status\) \|\| response\.status < 200 \|\| response\.status >= 300/u);
-assert.match(runtime, /translationProviderFactories\[provider\]\(\)/u);
+assert.match(runtime, /new KanjiRuntime\(/u);
+assert.match(runtime, /new KatakanaRuntime\(/u);
+assert.match(runtime, /translatorFactories\[this\.provider\]\(\)/u);
+assert.match(runtime, /kanjiAnalyzerFactories/u);
+assert.match(runtime, /Segmenter = globalThis\.Intl\?\.Segmenter/u);
+assert.match(runtime, /new Segmenter\("ja", \{ granularity: "word" \}\)/u);
+assert.match(runtime, /isWordLike === true && HAS_KANJI\d*\.test\(segment\)/u);
+assert.match(runtime, /url\.searchParams\.append\("dt", "rm"\)/u);
+assert.match(runtime, /sourceFragments\.join\(""\) !== word/u);
+assert.match(runtime, /new URLSearchParams\(\{\s*fromLang: "ja",\s*to: "ja",\s*text: word/su);
+assert.match(runtime, /echoed !== word \|\| translation\?\.to !== "ja"/u);
+assert.match(runtime, /metadata\.script !== "Latn"/u);
 assert.doesNotMatch(runtime, /baidu|azure|ShowCaptcha[^\n]*(?:retry|bypass)/iu);
+assert.doesNotMatch(coordinatorSource, /IntersectionObserver|translationCache|translationQueue|provider|romanize|translatePhrases/u);
+assert.match(coordinatorSource, /visibilitychange/u);
+assert.match(coordinatorSource, /flushDelayMs = 500/u);
+assert.match(coordinatorSource, /pendingRoots/u);
+assert.match(kanjiRuntimeSource, /this\.cache = new Map\(\)/u);
+assert.match(kanjiRuntimeSource, /this\.queue = \[\]/u);
+assert.match(katakanaRuntimeSource, /this\.cache = new Map\(\)/u);
+assert.match(katakanaRuntimeSource, /this\.queue = \[\]/u);
 const resourceLines = metadata.match(/^\/\/ @resource\s+.+$/gmu) ?? [];
 assert.equal(resourceLines.length, manifest.dictionary.length, "Expected one SRI @resource per dictionary asset.");
 for (const asset of manifest.dictionary) {
@@ -166,13 +221,13 @@ for (const asset of manifest.dictionary) {
 
 assert.equal(
   [...source.matchAll(/gmRequest\(\{/g)].length,
-  3,
-  "Expected exactly one Bing adapter, one Google adapter, and one local-resource GM request call site.",
+  5,
+  "Expected local resource plus independent Google/Bing katakana and kanji GM request call sites.",
 );
 assert.equal(
   [...source.matchAll(/gmRequest:\s*GM_xmlhttpRequest/g)].length,
-  3,
-  "Expected separate GM_xmlhttpRequest injection into the verified loader and both translators.",
+  5,
+  "Expected separate GM_xmlhttpRequest injection into the loader and four provider clients.",
 );
 assert.match(source, /handle = gmRequest\(\{\s*method: "GET",\s*url,\s*timeout,\s*anonymous: true/su);
 assert.match(source, /handle = gmRequest\(\{\s*\.\.\.options,/su);
@@ -194,7 +249,7 @@ assert.match(source, /Copyright \(c\) 2012 imaya/u);
 assert.match(source, /Copyright \(c\) 2017-2022 Katakana Terminator Contributors/u);
 
 console.log(
-  "build audit passed: YomiRuby 0.4.0 metadata, bilingual provider controls, approved storage and exact Google/Bing network boundaries, 12 SRI resources, three audited GM request paths, and embedded canonical licenses/notices",
+  "build audit passed: YomiRuby 0.5.0 metadata, five bilingual controls, aligned bounded Google/Bing katakana batches, independent kanji/provider settings, strict Google/Bing source-romaji boundaries, 12 preloaded SRI resources, five audited GM request paths, and embedded canonical licenses/notices",
 );
 
 function escapeRegex(value) {

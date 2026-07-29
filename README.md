@@ -3,30 +3,44 @@
 [简体中文](README.zh-CN.md)
 
 YomiRuby is a privacy-bounded Tampermonkey reading aid for Japanese web pages.
-It adds local Hepburn romaji above reliable words containing kanji and can add
-best-effort English ruby above matched katakana phrases through an optional
-online feature.
+It adds romaji above words containing kanji through a selected Local, Google,
+or Bing mode and can add best-effort English ruby above matched katakana
+phrases through a separately selected online provider.
 
-**Version 0.4.0 is a locally verified release candidate. It has not yet passed
+**Version 0.5.0 is a locally verified release candidate. It has not yet passed
 the required desktop Chrome + Tampermonkey installation, extension-background
 network capture, update, real-site, or publication gates.**
 
 ## Features
 
-### Local Kanji Romaji
+### Selectable Kanji Romaji
 
-- Runs the pinned `kuromoji@0.1.2` analyzer locally in the page.
-- Annotates only tokens containing kanji when a reliable whole-token reading is
-  available.
-- Uses modified Hepburn with macrons, such as `kyō` and `Tōkyō`.
-- Leaves the source unchanged instead of guessing when a reliable reading is
-  unavailable.
+- Remains off for every unconfigured exact origin.
+- Provides an independent global `google | bing | local` mode. Existing
+  installations without that setting migrate to Local so an update cannot
+  silently disclose kanji.
+- Local runs pinned `kuromoji@0.1.2` in the page and uses modified Hepburn with
+  macrons. The transitional 0.5.0 build still preloads all twelve dictionaries.
+- Google/Bing use local `Intl.Segmenter` word boundaries and send only complete,
+  deduplicated words containing kanji, one word per request. They never send a
+  complete sentence, surrounding context, title, URL, origin, or history.
+- Online modes accept only a strict source-owned romanization/transliteration
+  field. They never use ordinary English translation as romaji and never fall
+  back to another provider or Local after failure.
+- Online results are displayed as returned and are experimental best-effort
+  readings, not verified modified Hepburn.
 
 ### Optional Online Katakana English
 
 - Starts only after you enable it for the exact current origin.
-- Sends only matched, deduplicated katakana phrases near the viewport to the
-  selected Google or Bing no-key web endpoint.
+- While the tab is foregrounded, scans all safe body text and sends only exact,
+  matched, deduplicated katakana phrases to the selected Google or Bing no-key
+  web endpoint. Dynamic safe text joins the same stable FIFO; there is no
+  per-page candidate cap.
+- Both katakana providers preserve FIFO order and batch at most 50 phrases with
+  an encoded candidate-payload budget of 1800 characters, a minimum 250 ms
+  inter-batch interval, and an 8-second timeout. Google uses newline-joined `q`;
+  Bing uses a newline-joined `text` form body.
 - Defaults once to Bing for the Simplified-Chinese interface and Google for
   every other interface locale; a saved or manually selected provider wins.
 - Never silently falls back across providers. A failure preserves source text
@@ -42,7 +56,7 @@ The planned sole install and automatic-update URL is:
 
 <https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js>
 
-Do not treat that URL as a released stable build until the 0.4.0 browser and
+Do not treat that URL as a released stable build until the 0.5.0 browser and
 publication gates are recorded as complete. The supported compatibility target
 for the first public release is **desktop Google Chrome with Tampermonkey**.
 Other browsers and userscript managers are unverified and receive no
@@ -55,27 +69,35 @@ unconfigured exact origin**.
 
 ## Controls and language
 
-YomiRuby registers four Tampermonkey menu commands in a stable order: Kanji,
-Katakana, Translation Provider, Language. Normal enable, disable, startup,
-provider-switch, and language-switch paths
+YomiRuby registers five Tampermonkey menu commands in a stable order: Kanji,
+Kanji Mode, Katakana, Katakana Translator, Language. Normal enable, disable,
+startup, mode-switch, provider-switch, and language-switch paths
 do not create consent dialogs, loading banners, or success banners. Temporary
 non-modal notices are reserved for actionable failures such as a setting write
 failure or safe startup failure.
+
+The Kanji Mode and Katakana Translator commands show both the currently saved
+selection and the next selection. A menu does not display a requested setting
+until its independent persistence operation succeeds. A failed write keeps the
+old menu and old runtime. If the saved new selection cannot start, the selection
+remains saved, only that feature stops, and one temporary error is shown.
 
 The interface supports English and Simplified Chinese. On first run only,
 YomiRuby maps a primary browser language beginning with `zh` to Simplified
 Chinese and everything else to English, then stores the choice globally. A
 manual language switch permanently overrides that initial detection. Switching
 language does not enable or disable a feature, rescan text, load Kuromoji, or
-send a translation request. If no valid provider setting exists, the resolved
+send a translation request. It immediately reorders the next Kanji Mode action
+without changing the selected mode. If no valid provider setting exists, the resolved
 interface locale is used once (`zh` -> Bing; everything else -> Google) and the
 result is stored. Later language changes never overwrite the provider.
 
 Persistent settings are limited to:
 
 - `yomi-ruby:locale = "en" | "zh"` globally;
+- `yomi-ruby:kanji-romaji-mode = "google" | "bing" | "local"` globally;
 - `yomi-ruby:translation-provider = "bing" | "google"` globally;
-- `yomi-ruby:auto-origin:<origin>` for Local Kanji Romaji;
+- `yomi-ruby:auto-origin:<origin>` for Kanji Romaji activation;
 - `yomi-ruby:katakana-origin:<origin>` for Online Katakana English.
 
 No reading, phrase, translation, match, failure, queue, or request state is
@@ -87,14 +109,15 @@ persisted.
 |---|---|---|
 | GitHub Raw | Userscript install and automatic update | Downloads the userscript artifact; normal server request metadata applies. |
 | unpkg | Tampermonkey install and update of fixed resources | Downloads twelve immutable `kuromoji@0.1.2` dictionary resources pinned by URL, size, and SHA-256. Page text is not part of these requests. |
-| Google Translate | Only after Online Katakana English is enabled for the exact current origin and a safe text node contains a matched phrase near the viewport | A GET request sends matched, deduplicated katakana phrases in the `q` query parameter. |
-| Bing Translator | Under the same exact-origin feature gate, only when Bing is selected | An anonymous GET fetches translator-page HTML to parse temporary configuration without executing it. Serialized POST requests then send one matched katakana phrase at a time in the form body to the same approved Bing origin. |
+| Google Translate | Only while an exact-origin online feature is enabled and Google is selected | Katakana sends bounded matched phrases in `q`; Kanji mode sends one locally segmented complete word containing kanji in `q` and requests a separate `dt=rm` source reading. |
+| Bing Translator | Only while an exact-origin online feature is enabled and Bing is selected | An anonymous GET parses temporary configuration without executing page script. Katakana sends bounded newline-joined exact-phrase batches with `ja -> en` and validates every output line; Kanji mode sends one locally segmented word with `ja -> ja` and accepts only an independent `inputTransliteration`. |
 
-Neither provider request intentionally includes surrounding sentences, kanji,
-hiragana, page titles, page URLs, origins, or browsing history. Google places
-phrases in a URL query, so they may appear in browser, extension, network
-appliance, proxy, or service-side logs. Bing puts each phrase in a POST form
-body, which still discloses it to the browser extension, network path, and Bing.
+Neither online Kanji provider request includes surrounding sentences or text
+nodes, and neither online feature sends page titles, page URLs, origins, or
+browsing history. Google places submitted words or phrase batches in a URL query, so they may appear in browser, extension, network
+appliance, proxy, or service-side logs. Bing puts each bounded phrase batch in a
+POST form body, which still discloses it to the browser extension, network path,
+and Bing.
 
 YomiRuby has no project-owned analytics, telemetry, crash reporting, remote
 logging, tracking identifier, install callback, or silent cross-provider
@@ -123,6 +146,14 @@ See [Security and privacy boundary](docs/security-boundary.md), [Network audit](
 - Existing author ruby and Katakana Terminator annotations are preserved.
 - A page coordinator prevents nested or overlapping generated ruby and restores
   source text when annotation is disabled.
+- Kanji and Katakana use separate deep runtimes with independent adapters,
+  exact-candidate caches, FIFO queues, abort controllers, generations, Bing
+  temporary configuration, and setting lifecycles. They may contact the same
+  selected provider concurrently; no mutable request state is shared.
+- The DOM coordinator is the sole ruby owner. It uses an event-driven roughly
+  500 ms mutation window and cooperative ordered chunks, never a permanent
+  interval or viewport eligibility gate. Hidden tabs start no new work; becoming
+  visible triggers a rescan of the currently connected DOM.
 - Queued work and observers stop on disable; stale or aborted asynchronous
   results cannot re-annotate the page.
 
@@ -131,10 +162,11 @@ See [Security and privacy boundary](docs/security-boundary.md), [Network audit](
 YomiRuby's optional online Katakana-to-English module is based on Katakana
 Terminator by Arnie97 and the Katakana Terminator Contributors. It adapts
 Katakana Terminator's Katakana matching pattern and Google Translate request
-approach. YomiRuby's local kanji-romaji module, verified Kuromoji loading,
-privacy-scoped DOM coordinator, viewport scheduling, cancellation, response
-validation, reversible lifecycle, and bilingual controls are separate
-implementations. Katakana Terminator is licensed under the MIT License.
+approach. YomiRuby's selectable kanji-romaji modes, verified Kuromoji loading,
+Google/Bing source-romaji clients, independent deep runtimes, foreground whole-
+page scheduling, cancellation, response validation, reversible lifecycle, and
+bilingual controls are separate implementations. Katakana Terminator is
+licensed under the MIT License.
 
 The reviewed reference and immutable-revision record are retained under
 [`third_party/katakana-terminator/`](third_party/katakana-terminator/README.md).
@@ -171,4 +203,4 @@ sensitive details in a public Issue. See [CONTRIBUTING.md](CONTRIBUTING.md) and
 YomiRuby-owned code and contributions are licensed under the [MIT License](LICENSE).
 Third-party license and provenance material is recorded in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). No CLA or DCO is required for
-version 0.4.0.
+version 0.5.0.

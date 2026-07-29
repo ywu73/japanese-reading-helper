@@ -3,105 +3,98 @@ import {
   restoreConvertedKanaRuby,
   shouldSkipTextNode,
 } from "./dom.js";
-import { findKatakanaMatches } from "./katakana.js";
 
 export class AnnotationCoordinator {
   constructor({
     document,
-    IntersectionObserver = document.defaultView?.IntersectionObserver,
-    MutationObserver = document.defaultView?.MutationObserver,
-    requestIdleCallback = document.defaultView?.requestIdleCallback?.bind(document.defaultView),
-    cancelIdleCallback = document.defaultView?.cancelIdleCallback?.bind(document.defaultView),
+    MutationObserver = document?.defaultView?.MutationObserver,
+    setTimer = document?.defaultView?.setTimeout?.bind(document.defaultView) ?? globalThis.setTimeout,
+    clearTimer = document?.defaultView?.clearTimeout?.bind(document.defaultView) ?? globalThis.clearTimeout,
+    requestIdleCallback = document?.defaultView?.requestIdleCallback?.bind(document.defaultView),
+    cancelIdleCallback = document?.defaultView?.cancelIdleCallback?.bind(document.defaultView),
+    flushDelayMs = 500,
+    scanBatchSize = 100,
   }) {
     if (!document) {
       throw new TypeError("An AnnotationCoordinator requires a document.");
     }
     this.document = document;
-    this.IntersectionObserver = IntersectionObserver;
     this.MutationObserver = MutationObserver;
+    this.setTimer = setTimer;
+    this.clearTimer = clearTimer;
     this.requestIdleCallback = requestIdleCallback;
     this.cancelIdleCallback = cancelIdleCallback;
-    this.kanjiAnalyzer = null;
-    this.katakanaTranslator = null;
+    this.flushDelayMs = flushDelayMs;
+    this.scanBatchSize = scanBatchSize;
+    this.kanjiRuntime = null;
+    this.katakanaRuntime = null;
     this.active = false;
+    this.hidden = document.visibilityState === "hidden";
     this.records = new Set();
     this.nodeRecords = new WeakMap();
-    this.pendingNodes = new Set();
-    this.waitingByElement = new Map();
-    this.translationCache = new Map();
-    this.translationQueue = new Set();
-    this.translationActiveGeneration = null;
-    this.katakanaGeneration = 0;
-    this.katakanaAbortController = null;
-    this.translationFlushScheduled = false;
-    this.idleHandle = null;
+    this.pendingRoots = new Set();
+    this.pendingNodes = [];
+    this.pendingNodeSet = new Set();
+    this.flushTimer = null;
+    this.scanHandle = null;
     this.mutationObserver = null;
-    this.intersectionObserver = null;
+    this.onVisibilityChange = () => this.#handleVisibilityChange();
   }
 
-  enableKanji(analyzeText) {
-    if (typeof analyzeText !== "function") {
-      throw new TypeError("enableKanji requires an analyzer function.");
-    }
-    this.kanjiAnalyzer = analyzeText;
+  enableKanji(runtime) {
+    assertRuntime(runtime, "Kanji");
+    this.kanjiRuntime = runtime;
     this.#ensureActive();
     convertExistingKanaRuby(this.document);
-    for (const record of this.records) {
-      this.#processRecord(record);
-    }
+    this.#reprocessAll();
+    this.#queueRoot(this.document.body ?? this.document.documentElement, { immediate: true });
   }
 
   disableKanji() {
-    this.kanjiAnalyzer = null;
+    const runtime = this.kanjiRuntime;
+    this.kanjiRuntime = null;
     restoreConvertedKanaRuby(this.document);
-    if (!this.katakanaTranslator) {
+    for (const record of this.records) {
+      runtime?.forget(record);
+    }
+    if (!this.katakanaRuntime) {
       this.#stop();
       return;
     }
-    for (const record of this.records) {
-      this.#processRecord(record);
-    }
+    this.#reprocessAll();
   }
 
-  enableKatakana(translatePhrases) {
-    if (typeof translatePhrases !== "function") {
-      throw new TypeError("enableKatakana requires a translation function.");
-    }
-    this.katakanaGeneration += 1;
-    this.katakanaAbortController?.abort();
-    this.katakanaAbortController = new AbortController();
-    this.katakanaTranslator = translatePhrases;
-    this.translationCache.clear();
-    this.translationQueue.clear();
+  enableKatakana(runtime) {
+    assertRuntime(runtime, "Katakana");
+    this.katakanaRuntime = runtime;
     this.#ensureActive();
-    for (const record of this.records) {
-      this.#processRecord(record);
-    }
+    this.#reprocessAll();
+    this.#queueRoot(this.document.body ?? this.document.documentElement, { immediate: true });
   }
 
   disableKatakana() {
-    this.katakanaGeneration += 1;
-    this.katakanaAbortController?.abort();
-    this.katakanaAbortController = null;
-    this.katakanaTranslator = null;
-    this.translationCache.clear();
-    this.translationQueue.clear();
-    this.translationFlushScheduled = false;
-    if (!this.kanjiAnalyzer) {
+    const runtime = this.katakanaRuntime;
+    this.katakanaRuntime = null;
+    for (const record of this.records) {
+      runtime?.forget(record);
+    }
+    if (!this.kanjiRuntime) {
       this.#stop();
       return;
     }
-    for (const record of this.records) {
-      this.#processRecord(record);
+    this.#reprocessAll();
+  }
+
+  refresh(record) {
+    if (!this.active || this.hidden || !this.records.has(record)) {
+      return;
     }
+    this.#processRecord(record);
   }
 
   stop() {
-    this.kanjiAnalyzer = null;
-    this.katakanaTranslator = null;
-    this.katakanaGeneration += 1;
-    this.katakanaAbortController?.abort();
-    this.katakanaAbortController = null;
+    this.kanjiRuntime = null;
+    this.katakanaRuntime = null;
     this.#stop();
   }
 
@@ -110,21 +103,20 @@ export class AnnotationCoordinator {
       return;
     }
     this.active = true;
-    if (this.IntersectionObserver) {
-      this.intersectionObserver = new this.IntersectionObserver(
-        (entries) => this.#onIntersections(entries),
-        { root: null, rootMargin: "800px 0px", threshold: 0 },
-      );
-    }
+    this.hidden = this.document.visibilityState === "hidden";
+    this.document.addEventListener("visibilitychange", this.onVisibilityChange);
     if (this.MutationObserver) {
-      this.mutationObserver = new this.MutationObserver((records) => this.#onMutations(records));
+      this.mutationObserver = new this.MutationObserver((mutations) => this.#onMutations(mutations));
       this.mutationObserver.observe(this.document.body ?? this.document.documentElement, {
         childList: true,
         characterData: true,
         subtree: true,
       });
     }
-    this.#scan(this.document.body ?? this.document.documentElement);
+    if (this.hidden) {
+      this.kanjiRuntime?.pause();
+      this.katakanaRuntime?.pause();
+    }
   }
 
   #stop() {
@@ -133,38 +125,117 @@ export class AnnotationCoordinator {
       return;
     }
     this.active = false;
+    this.document.removeEventListener("visibilitychange", this.onVisibilityChange);
     this.mutationObserver?.disconnect();
-    this.intersectionObserver?.disconnect();
     this.mutationObserver = null;
-    this.intersectionObserver = null;
-    if (this.idleHandle != null && this.cancelIdleCallback) {
-      this.cancelIdleCallback(this.idleHandle);
-    }
-    this.idleHandle = null;
-    this.pendingNodes.clear();
-    this.waitingByElement.clear();
-    this.translationQueue.clear();
+    this.#cancelScheduledWork();
+    this.pendingRoots.clear();
+    this.pendingNodes.length = 0;
+    this.pendingNodeSet.clear();
     for (const record of this.records) {
       this.#restoreRecord(record);
     }
     this.records.clear();
-    this.translationCache.clear();
     restoreConvertedKanaRuby(this.document);
     this.document.normalize?.();
   }
 
-  #scan(root) {
-    if (!this.active || !root?.isConnected) {
+  #handleVisibilityChange() {
+    if (!this.active) {
+      return;
+    }
+    this.hidden = this.document.visibilityState === "hidden";
+    if (this.hidden) {
+      this.kanjiRuntime?.pause();
+      this.katakanaRuntime?.pause();
+      this.#cancelScheduledWork();
+      return;
+    }
+    this.kanjiRuntime?.resume();
+    this.katakanaRuntime?.resume();
+    this.#discardDetachedRecords();
+    this.#reprocessAll();
+    this.#queueRoot(this.document.body ?? this.document.documentElement, { immediate: true });
+  }
+
+  #onMutations(mutations) {
+    if (!this.active) {
+      return;
+    }
+    for (const mutation of mutations) {
+      if (mutation.type === "characterData") {
+        const record = this.nodeRecords.get(mutation.target);
+        if (record && this.#recordIsCurrent(record)) {
+          continue;
+        }
+        if (record) {
+          this.#discardRecord(record);
+        }
+        this.pendingRoots.add(mutation.target);
+        continue;
+      }
+      for (const node of mutation.removedNodes) {
+        this.#discardDetachedOwnership(node);
+      }
+      for (const node of mutation.addedNodes) {
+        if (
+          node.nodeType === 1
+          && node.closest?.("[data-yomi-ruby-generated], [data-yomi-ruby-converted-rt]")
+        ) {
+          continue;
+        }
+        this.pendingRoots.add(node);
+      }
+    }
+    this.#scheduleFlush();
+  }
+
+  #queueRoot(root, { immediate = false } = {}) {
+    if (!this.active || !root) {
+      return;
+    }
+    this.pendingRoots.add(root);
+    if (immediate && !this.hidden) {
+      this.#flushRoots();
+    } else {
+      this.#scheduleFlush();
+    }
+  }
+
+  #scheduleFlush() {
+    if (!this.active || this.hidden || this.flushTimer != null) {
+      return;
+    }
+    this.flushTimer = this.setTimer(() => {
+      this.flushTimer = null;
+      this.#flushRoots();
+    }, this.flushDelayMs);
+  }
+
+  #flushRoots() {
+    if (!this.active || this.hidden) {
+      return;
+    }
+    const roots = [...this.pendingRoots];
+    this.pendingRoots.clear();
+    for (const root of roots) {
+      this.#collectTextNodes(root);
+    }
+    this.#scheduleNodeDrain();
+  }
+
+  #collectTextNodes(root) {
+    if (!root?.isConnected) {
       return;
     }
     if (root.nodeType === 3) {
-      this.#waitForViewport(root);
+      this.#enqueueTextNode(root);
       return;
     }
-    if (root.nodeType !== 1 && root.nodeType !== 9 && root.nodeType !== 11) {
+    if (![1, 9, 11].includes(root.nodeType)) {
       return;
     }
-    if (this.kanjiAnalyzer) {
+    if (this.kanjiRuntime) {
       convertExistingKanaRuby(root);
     }
     const walker = this.document.createTreeWalker(
@@ -175,132 +246,55 @@ export class AnnotationCoordinator {
         : this.document.defaultView.NodeFilter.FILTER_ACCEPT },
     );
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      this.#waitForViewport(node);
+      this.#enqueueTextNode(node);
     }
   }
 
-  #waitForViewport(node) {
-    if (!this.active || this.nodeRecords.has(node) || shouldSkipTextNode(node)) {
+  #enqueueTextNode(node) {
+    if (
+      !node?.isConnected
+      || this.nodeRecords.has(node)
+      || this.pendingNodeSet.has(node)
+      || shouldSkipTextNode(node)
+    ) {
       return;
     }
-    if (!this.intersectionObserver) {
-      this.#enqueueNode(node);
-      return;
-    }
-    const element = node.parentElement;
-    let nodes = this.waitingByElement.get(element);
-    if (!nodes) {
-      nodes = new Set();
-      this.waitingByElement.set(element, nodes);
-      this.intersectionObserver.observe(element);
-    }
-    nodes.add(node);
+    this.pendingNodeSet.add(node);
+    this.pendingNodes.push(node);
   }
 
-  #onIntersections(entries) {
-    if (!this.active) {
-      return;
-    }
-    for (const entry of entries) {
-      if (!entry.isIntersecting) {
-        continue;
-      }
-      this.intersectionObserver.unobserve(entry.target);
-      const nodes = this.waitingByElement.get(entry.target) ?? [];
-      this.waitingByElement.delete(entry.target);
-      for (const node of nodes) {
-        this.#enqueueNode(node);
-      }
-    }
-  }
-
-  #onMutations(records) {
-    if (!this.active) {
-      return;
-    }
-    for (const mutation of records) {
-      if (mutation.type === "characterData") {
-        const record = this.nodeRecords.get(mutation.target);
-        if (record) {
-          record.valid = false;
-          continue;
-        }
-        this.#scan(mutation.target);
-        continue;
-      }
-      for (const node of mutation.removedNodes) {
-        this.#discardDetachedOwnership(node);
-      }
-      this.#discardDetachedViewportWork();
-      for (const node of mutation.addedNodes) {
-        if (this.nodeRecords.has(node)) {
-          continue;
-        }
-        if (node.nodeType === 1 && node.closest?.("[data-yomi-ruby-generated], [data-yomi-ruby-converted-rt]")) {
-          continue;
-        }
-        this.#scan(node);
-      }
-    }
-  }
-
-  #discardDetachedOwnership(root) {
-    const records = new Set();
-    const stack = [root];
-    while (stack.length) {
-      const node = stack.pop();
-      const record = this.nodeRecords.get(node);
-      if (record) {
-        records.add(record);
-      }
-      stack.push(...node.childNodes);
-    }
-    for (const record of records) {
-      if (record.currentNodes.some((node) => !node.isConnected)) {
-        this.#discardRecord(record);
-      }
-    }
-  }
-
-  #discardDetachedViewportWork() {
-    for (const node of this.pendingNodes) {
-      if (!node.isConnected) {
-        this.pendingNodes.delete(node);
-      }
-    }
-    for (const [element] of this.waitingByElement) {
-      if (!element.isConnected) {
-        this.intersectionObserver?.unobserve(element);
-        this.waitingByElement.delete(element);
-      }
-    }
-  }
-
-  #enqueueNode(node) {
-    if (!this.active || !node.isConnected || this.nodeRecords.has(node) || shouldSkipTextNode(node)) {
-      return;
-    }
-    this.pendingNodes.add(node);
-    if (this.idleHandle != null) {
+  #scheduleNodeDrain() {
+    if (!this.active || this.hidden || this.scanHandle != null || this.pendingNodes.length === 0) {
       return;
     }
     if (this.requestIdleCallback) {
-      this.idleHandle = this.requestIdleCallback((deadline) => this.#drainNodes(deadline), { timeout: 500 });
-    } else {
-      this.#drainNodes({ didTimeout: true, timeRemaining: () => 0 });
+      this.scanHandle = this.requestIdleCallback((deadline) => this.#drainNodes(deadline), {
+        timeout: this.flushDelayMs,
+      });
+      return;
     }
+    this.scanHandle = this.setTimer(() => this.#drainNodes({
+      didTimeout: true,
+      timeRemaining: () => 0,
+    }), 0);
   }
 
   #drainNodes(deadline) {
-    this.idleHandle = null;
-    if (!this.active) {
+    this.scanHandle = null;
+    if (!this.active || this.hidden) {
       return;
     }
-    while (this.pendingNodes.size && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
-      const node = this.pendingNodes.values().next().value;
-      this.pendingNodes.delete(node);
+    let processed = 0;
+    while (
+      this.pendingNodes.length > 0
+      && processed < this.scanBatchSize
+      && (deadline.didTimeout || deadline.timeRemaining() > 1)
+    ) {
+      const node = this.pendingNodes.shift();
+      this.pendingNodeSet.delete(node);
       if (node.isConnected && !this.nodeRecords.has(node) && !shouldSkipTextNode(node)) {
         const record = {
+          text: node.textContent,
           originalText: node.textContent,
           currentNodes: [node],
           planKey: null,
@@ -310,149 +304,54 @@ export class AnnotationCoordinator {
         this.nodeRecords.set(node, record);
         this.#processRecord(record);
       }
+      processed += 1;
     }
-    if (this.pendingNodes.size && this.requestIdleCallback) {
-      this.idleHandle = this.requestIdleCallback((next) => this.#drainNodes(next), { timeout: 500 });
-    }
+    this.#scheduleNodeDrain();
   }
 
   #processRecord(record) {
     if (!this.#recordIsCurrent(record)) {
-      record.valid = false;
+      this.#discardRecord(record);
       return;
     }
-    const katakanaMatches = this.katakanaTranslator
-      ? findKatakanaMatches(record.originalText)
-      : [];
-    if (this.katakanaTranslator) {
-      this.#queueKatakana(record, katakanaMatches);
-    }
-
-    const blockedRanges = katakanaMatches.filter((match) => {
-      const status = this.translationCache.get(match.text)?.status;
-      return status === "pending" || status === "success";
-    });
+    const katakanaPlan = this.katakanaRuntime?.plan(record) ?? {
+      ranges: [], reservations: [],
+    };
+    const kanjiPlan = this.kanjiRuntime?.plan(record) ?? { ranges: [] };
     const annotations = [];
-    if (this.kanjiAnalyzer) {
-      for (const range of annotationRanges(record.originalText, this.kanjiAnalyzer)) {
-        if (!blockedRanges.some((blocked) => overlaps(range, blocked))) {
-          annotations.push({ ...range, feature: "kanji" });
-        }
+    for (const range of kanjiPlan.ranges) {
+      if (!katakanaPlan.reservations.some((reserved) => overlaps(range, reserved))) {
+        annotations.push({ ...range, feature: "kanji" });
       }
     }
-    for (const match of katakanaMatches) {
-      const cached = this.translationCache.get(match.text);
-      if (cached?.status === "success") {
-        annotations.push({
-          ...match,
-          feature: "katakana",
-          annotation: cached.translation,
-        });
-      }
+    for (const range of katakanaPlan.ranges) {
+      annotations.push({ ...range, feature: "katakana" });
     }
     annotations.sort((left, right) => left.start - right.start || left.end - right.end);
     this.#renderRecord(record, annotations);
   }
 
-  #queueKatakana(record, matches) {
-    let queued = false;
-    for (const match of matches) {
-      let cached = this.translationCache.get(match.text);
-      if (!cached) {
-        cached = { status: "pending", waiters: new Set() };
-        this.translationCache.set(match.text, cached);
-        this.translationQueue.add(match.text);
-        queued = true;
-      }
-      if (cached.status === "pending") {
-        cached.waiters.add(record);
-      }
-    }
-    if (queued) {
-      this.#scheduleTranslationFlush();
-    }
-  }
-
-  #scheduleTranslationFlush() {
-    if (
-      this.translationFlushScheduled
-      || this.translationActiveGeneration === this.katakanaGeneration
-    ) {
+  #reprocessAll() {
+    if (this.hidden) {
       return;
     }
-    this.translationFlushScheduled = true;
-    queueMicrotask(() => {
-      this.translationFlushScheduled = false;
-      void this.#flushTranslations();
-    });
-  }
-
-  async #flushTranslations() {
-    if (
-      this.translationActiveGeneration === this.katakanaGeneration
-      || !this.katakanaTranslator
-      || this.translationQueue.size === 0
-    ) {
-      return;
-    }
-    const phrases = [...this.translationQueue];
-    this.translationQueue.clear();
-    const generation = this.katakanaGeneration;
-    const translator = this.katakanaTranslator;
-    const signal = this.katakanaAbortController?.signal;
-    this.translationActiveGeneration = generation;
-    let translations = new Map();
-    try {
-      translations = await translator(phrases, { signal });
-    } catch {
-      translations = new Map();
-    } finally {
-      if (this.translationActiveGeneration === generation) {
-        this.translationActiveGeneration = null;
-      }
-    }
-    if (generation !== this.katakanaGeneration || translator !== this.katakanaTranslator || signal?.aborted) {
-      if (this.translationQueue.size) {
-        this.#scheduleTranslationFlush();
-      }
-      return;
-    }
-
-    const affected = new Set();
-    for (const phrase of phrases) {
-      const cached = this.translationCache.get(phrase);
-      if (!cached || cached.status !== "pending") {
-        continue;
-      }
-      for (const record of cached.waiters) {
-        affected.add(record);
-      }
-      const translation = translations instanceof Map ? translations.get(phrase) : undefined;
-      this.translationCache.set(phrase, translation
-        ? { status: "success", translation }
-        : { status: "failure" });
-    }
-    for (const record of affected) {
+    for (const record of [...this.records]) {
       this.#processRecord(record);
-    }
-    if (this.translationQueue.size) {
-      this.#scheduleTranslationFlush();
     }
   }
 
   #renderRecord(record, annotations) {
-    const planKey = JSON.stringify(annotations.map(({ start, end, feature, annotation, reading, romaji }) => (
-      [start, end, feature, annotation, reading, romaji]
-    )));
+    const planKey = JSON.stringify(annotations.map((range) => [
+      range.start, range.end, range.feature, range.annotation, range.reading, range.romaji,
+    ]));
     if (record.planKey === planKey) {
       return;
     }
     const parent = record.currentNodes[0]?.parentNode;
     if (!parent || record.currentNodes.some((node) => node.parentNode !== parent)) {
-      record.valid = false;
+      this.#discardRecord(record);
       return;
     }
-
     const fragment = this.document.createDocumentFragment();
     let cursor = 0;
     for (const range of annotations) {
@@ -471,7 +370,6 @@ export class AnnotationCoordinator {
     if (!fragment.childNodes.length) {
       fragment.append(this.document.createTextNode(record.originalText));
     }
-
     const nextNodes = [...fragment.childNodes];
     parent.insertBefore(fragment, record.currentNodes[0]);
     for (const node of record.currentNodes) {
@@ -493,14 +391,16 @@ export class AnnotationCoordinator {
     ruby.setAttribute("data-yomi-ruby-feature", range.feature);
     const base = this.document.createElement("span");
     base.className = "yomi-ruby-base";
-    base.textContent = recordText(range);
+    base.textContent = range.text;
     const rt = this.document.createElement("rt");
     rt.className = range.feature === "kanji"
       ? "yomi-ruby-rt"
       : "yomi-ruby-rt yomi-ruby-katakana-rt";
     if (range.feature === "kanji") {
-      ruby.setAttribute("data-yomi-ruby-kana", range.reading);
-      ruby.tabIndex = 0;
+      if (typeof range.reading === "string" && range.reading.length > 0) {
+        ruby.setAttribute("data-yomi-ruby-kana", range.reading);
+        ruby.tabIndex = 0;
+      }
       rt.textContent = range.romaji;
     } else {
       rt.textContent = range.annotation;
@@ -522,6 +422,11 @@ export class AnnotationCoordinator {
   }
 
   #discardRecord(record) {
+    if (!this.records.has(record)) {
+      return;
+    }
+    this.kanjiRuntime?.forget(record);
+    this.katakanaRuntime?.forget(record);
     const parent = record.currentNodes[0]?.parentNode;
     if (
       parent
@@ -537,11 +442,34 @@ export class AnnotationCoordinator {
     for (const node of record.currentNodes) {
       this.nodeRecords.delete(node);
     }
-    for (const cached of this.translationCache.values()) {
-      cached.waiters?.delete(record);
-    }
     record.valid = false;
     this.records.delete(record);
+  }
+
+  #discardDetachedOwnership(root) {
+    const found = new Set();
+    const stack = [root];
+    while (stack.length > 0) {
+      const node = stack.pop();
+      const record = this.nodeRecords.get(node);
+      if (record) {
+        found.add(record);
+      }
+      stack.push(...node.childNodes);
+    }
+    for (const record of found) {
+      if (record.currentNodes.some((node) => !node.isConnected)) {
+        this.#discardRecord(record);
+      }
+    }
+  }
+
+  #discardDetachedRecords() {
+    for (const record of [...this.records]) {
+      if (!this.#recordIsCurrent(record)) {
+        this.#discardRecord(record);
+      }
+    }
   }
 
   #recordIsCurrent(record) {
@@ -555,45 +483,37 @@ export class AnnotationCoordinator {
       && record.currentNodes.map(sourceText).join("") === record.originalText,
     );
   }
+
+  #cancelScheduledWork() {
+    if (this.flushTimer != null) {
+      this.clearTimer(this.flushTimer);
+      this.flushTimer = null;
+    }
+    if (this.scanHandle != null) {
+      if (this.requestIdleCallback && this.cancelIdleCallback) {
+        this.cancelIdleCallback(this.scanHandle);
+      } else {
+        this.clearTimer(this.scanHandle);
+      }
+      this.scanHandle = null;
+    }
+  }
 }
 
-function annotationRanges(text, analyzeText) {
-  let segments;
-  try {
-    segments = analyzeText(text);
-  } catch {
-    return [];
+function assertRuntime(runtime, label) {
+  if (
+    !runtime
+    || typeof runtime.plan !== "function"
+    || typeof runtime.forget !== "function"
+    || typeof runtime.pause !== "function"
+    || typeof runtime.resume !== "function"
+  ) {
+    throw new TypeError(`${label} annotation requires a runtime interface.`);
   }
-  if (!Array.isArray(segments)) {
-    return [];
-  }
-  const ranges = [];
-  let cursor = 0;
-  for (const segment of segments) {
-    const surface = segment?.type === "annotation" ? segment.surface : segment?.text;
-    if (typeof surface !== "string" || text.slice(cursor, cursor + surface.length) !== surface) {
-      return [];
-    }
-    if (segment.type === "annotation") {
-      ranges.push({
-        start: cursor,
-        end: cursor + surface.length,
-        text: surface,
-        reading: segment.reading,
-        romaji: segment.romaji,
-      });
-    }
-    cursor += surface.length;
-  }
-  return cursor === text.length ? ranges : [];
 }
 
 function overlaps(left, right) {
   return left.start < right.end && right.start < left.end;
-}
-
-function recordText(range) {
-  return range.text;
 }
 
 function sourceText(node) {

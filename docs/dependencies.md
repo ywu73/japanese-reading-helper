@@ -52,7 +52,10 @@ against `plainheart/bing-translate-api` at immutable commit
 that Node package is bundled. YomiRuby fetches the approved Bing translator
 page anonymously, parses only `IG`, the `#rich_tta` IID, and the
 `params_AbusePreventionHelper` tuple without executing returned code, then sends
-one phrase per anonymous `/ttranslatev3` POST. The reference is MIT-licensed,
+bounded newline-joined katakana batches per anonymous `/ttranslatev3` POST.
+Each batch follows the same 50-candidate, 1800-encoded-character, 250 ms, and
+8-second limits as the Google katakana path, adapted from URL length to Bing's
+encoded `text` form field. The reference is MIT-licensed,
 but its license does not authorize Microsoft's web service.
 
 Both providers are external runtime web endpoints, not executable dependencies,

@@ -11,7 +11,7 @@ const TRANSLATOR_FIXTURE = await readFile(
   "utf8",
 );
 
-test("initializes anonymously from the allowed Bing page and sends one exact phrase to ttranslatev3", async () => {
+test("initializes anonymously and sends deduplicated exact phrases as one newline batch", async () => {
   const requests = [];
   const client = createBingTranslationClient({
     gmRequest(options) {
@@ -23,7 +23,7 @@ test("initializes anonymously from the allowed Bing page and sends one exact phr
     now: () => 1_000,
   });
 
-  const translating = client.translatePhrases(["コンピューター", "コンピューター"]);
+  const translating = client.translatePhrases(["コンピューター", "ゲーム", "コンピューター"]);
   await waitFor(() => requests.length === 1);
   assert.equal(requests.length, 1);
   assert.equal(requests[0].method, "GET");
@@ -43,6 +43,7 @@ test("initializes anonymously from the allowed Bing page and sends one exact phr
   const post = requests[1];
   const url = new URL(post.url);
   assert.equal(post.method, "POST");
+  assert.equal(post.timeout, 8000);
   assert.equal(post.anonymous, true);
   assert.equal(post.redirect, "error");
   assert.equal(url.origin, "https://cn.bing.com");
@@ -62,7 +63,7 @@ test("initializes anonymously from the allowed Bing page and sends one exact phr
   assert.deepEqual([...new URLSearchParams(post.data).entries()], [
     ["fromLang", "ja"],
     ["to", "en"],
-    ["text", "コンピューター"],
+    ["text", "コンピューター\nゲーム"],
     ["token", "redacted-page-token"],
     ["key", "123456789"],
     ["tryFetchingGenderDebiasedTranslations", "true"],
@@ -71,12 +72,50 @@ test("initializes anonymously from the allowed Bing page and sends one exact phr
   respond(post, {
     status: 200,
     responseText: JSON.stringify([{
-      translations: [{ text: "Computer", to: "en" }],
+      translations: [{ text: "Computer\nGame", to: "en" }],
       detectedLanguage: { language: "ja" },
     }]),
   });
 
-  assert.deepEqual(await translating, new Map([["コンピューター", "Computer"]]));
+  assert.deepEqual(await translating, new Map([
+    ["コンピューター", "Computer"],
+    ["ゲーム", "Game"],
+  ]));
+});
+
+test("accepts the current Bing object-initializer IG shape", async () => {
+  const requests = [];
+  const client = createBingTranslationClient({
+    gmRequest(options) {
+      requests.push(options);
+      return { abort() {} };
+    },
+    DOMParser,
+    minimumIntervalMs: 0,
+  });
+
+  const translating = client.translatePhrases(["ゲーム"]);
+  await waitFor(() => requests.length === 1);
+  requests[0].onload({
+    status: 200,
+    finalUrl: "https://cn.bing.com/translator",
+    responseText: translatorHtml({ igShape: "object" }),
+  });
+  await waitFor(() => requests.length === 2);
+  assert.equal(requests[1]?.method, "POST");
+  respond(requests[1], { status: 200, responseText: validTranslation("Game") });
+
+  assert.deepEqual(await translating, new Map([["ゲーム", "Game"]]));
+});
+
+test("accepts bounded input-transliteration metadata without exposing it as the translation", async () => {
+  const { requests, translating } = await initializedTranslation();
+  respond(requests[1], {
+    status: 200,
+    responseText: validTranslationWithTransliteration("Game", "game"),
+  });
+
+  assert.deepEqual(await translating, new Map([["ゲーム", "Game"]]));
 });
 
 test("rejects redirects, ambiguous fields, and an IID outside the rich translation container", async (t) => {
@@ -108,6 +147,14 @@ test("rejects redirects, ambiguous fields, and an IID outside the rich translati
       name: "duplicate IG",
       finalUrl: "https://www.bing.com/translator",
       html: translatorHtml({ after: '<script>window._G.IG = "DUPLICATE123";</script>' }),
+    },
+    {
+      name: "duplicate object-initializer IG",
+      finalUrl: "https://www.bing.com/translator",
+      html: translatorHtml({
+        igShape: "object",
+        after: '<script>var _G = { IG: "DUPLICATE123" };</script>',
+      }),
     },
     {
       name: "duplicate helper",
@@ -148,7 +195,7 @@ test("rejects redirects, ambiguous fields, and an IID outside the rich translati
   }
 });
 
-test("serializes unique eligible phrases and never sends surrounding Japanese text", async () => {
+test("batches unique eligible phrases and never sends surrounding Japanese text", async () => {
   const requests = [];
   const client = createBingTranslationClient({
     gmRequest(options) {
@@ -174,18 +221,80 @@ test("serializes unique eligible phrases and never sends surrounding Japanese te
   });
   await waitFor(() => requests.length === 2);
 
-  assert.equal(new URLSearchParams(requests[1].data).get("text"), "ゲーム");
+  assert.equal(new URLSearchParams(requests[1].data).get("text"), "ゲーム\nテレビ");
   assert.equal(requests.length, 2);
   respond(requests[1], {
     status: 200,
-    responseText: validTranslation("Game"),
+    responseText: validTranslation("Game\nTelevision"),
+  });
+
+  assert.deepEqual(await translating, new Map([
+    ["ゲーム", "Game"],
+    ["テレビ", "Television"],
+  ]));
+});
+
+test("splits Bing batches at 50 phrases while preserving stable FIFO order", async () => {
+  const requests = [];
+  const phrases = Array.from({ length: 51 }, (_, index) => `ゲーム${"ア".repeat(index + 1)}`);
+  const client = createBingTranslationClient({
+    gmRequest(options) {
+      requests.push(options);
+      return { abort() {} };
+    },
+    DOMParser,
+    maxEncodedTextLength: 100_000,
+    minimumIntervalMs: 0,
+  });
+
+  const translating = client.translatePhrases(phrases);
+  await waitFor(() => requests.length === 1);
+  requests[0].onload({
+    status: 200,
+    finalUrl: "https://www.bing.com/translator",
+    responseText: translatorHtml(),
+  });
+  await waitFor(() => requests.length === 2);
+
+  const firstBatch = new URLSearchParams(requests[1].data).get("text").split("\n");
+  assert.deepEqual(firstBatch, phrases.slice(0, 50));
+  respond(requests[1], {
+    status: 200,
+    responseText: validTranslation(firstBatch.map((_, index) => `Game ${index + 1}`).join("\n")),
   });
   await waitFor(() => requests.length === 3);
-  assert.equal(new URLSearchParams(requests[2].data).get("text"), "テレビ");
-  respond(requests[2], {
-    status: 200,
-    responseText: validTranslation("Television"),
+
+  assert.equal(new URLSearchParams(requests[2].data).get("text"), phrases[50]);
+  respond(requests[2], { status: 200, responseText: validTranslation("Game 51") });
+  assert.equal((await translating).size, 51);
+});
+
+test("splits Bing batches before the encoded text payload exceeds 1800 characters", async () => {
+  const requests = [];
+  const onePhraseBudget = encodeURIComponent("ゲーム").length;
+  const client = createBingTranslationClient({
+    gmRequest(options) {
+      requests.push(options);
+      return { abort() {} };
+    },
+    DOMParser,
+    maxEncodedTextLength: onePhraseBudget,
+    minimumIntervalMs: 0,
   });
+
+  const translating = client.translatePhrases(["ゲーム", "テレビ"]);
+  await waitFor(() => requests.length === 1);
+  requests[0].onload({
+    status: 200,
+    finalUrl: "https://www.bing.com/translator",
+    responseText: translatorHtml(),
+  });
+  await waitFor(() => requests.length === 2);
+  assert.equal(new URLSearchParams(requests[1].data).get("text"), "ゲーム");
+  respond(requests[1], { status: 200, responseText: validTranslation("Game") });
+  await waitFor(() => requests.length === 3);
+  assert.equal(new URLSearchParams(requests[2].data).get("text"), "テレビ");
+  respond(requests[2], { status: 200, responseText: validTranslation("Television") });
 
   assert.deepEqual(await translating, new Map([
     ["ゲーム", "Game"],
@@ -225,7 +334,7 @@ test("concurrent translation calls share one initialization and serialize their 
   assert.deepEqual(requests.map(({ method }) => method), ["GET", "POST", "POST"]);
 });
 
-test("refreshes configuration once and retries only the affected phrase after HTTP 401", async () => {
+test("refreshes configuration once and retries only the affected batch after HTTP 401", async () => {
   const requests = [];
   const client = createBingTranslationClient({
     gmRequest(options) {
@@ -236,7 +345,7 @@ test("refreshes configuration once and retries only the affected phrase after HT
     minimumIntervalMs: 0,
   });
 
-  const translating = client.translatePhrases(["ゲーム"]);
+  const translating = client.translatePhrases(["ゲーム", "テレビ"]);
   await waitFor(() => requests.length === 1);
   requests[0].onload({
     status: 200,
@@ -256,9 +365,13 @@ test("refreshes configuration once and retries only the affected phrase after HT
   await waitFor(() => requests.length === 4);
   assert.equal(new URL(requests[3].url).origin, "https://cn.bing.com");
   assert.equal(new URLSearchParams(requests[3].data).get("token"), "second-token");
-  respond(requests[3], { status: 200, responseText: validTranslation("Game") });
+  assert.equal(new URLSearchParams(requests[3].data).get("text"), "ゲーム\nテレビ");
+  respond(requests[3], { status: 200, responseText: validTranslation("Game\nTelevision") });
 
-  assert.deepEqual(await translating, new Map([["ゲーム", "Game"]]));
+  assert.deepEqual(await translating, new Map([
+    ["ゲーム", "Game"],
+    ["テレビ", "Television"],
+  ]));
   assert.deepEqual(requests.map(({ method }) => method), ["GET", "POST", "GET", "POST"]);
 });
 
@@ -306,7 +419,7 @@ test("a second HTTP 401 fails without another refresh or retry", async () => {
   assert.deepEqual(await later, new Map([["テレビ", "Television"]]));
 });
 
-test("uses the page-declared expiry with refresh skew and conservatively delays serialized phrase traffic", async () => {
+test("uses the page-declared expiry and the default 250 ms interval between serialized batches", async () => {
   const requests = [];
   const waits = [];
   let clock = 1_000;
@@ -317,7 +430,7 @@ test("uses the page-declared expiry with refresh skew and conservatively delays 
     },
     DOMParser,
     now: () => clock,
-    minimumIntervalMs: 250,
+    maxPhrasesPerRequest: 1,
     refreshSkewMs: 60_000,
     async sleep(milliseconds) {
       waits.push(milliseconds);
@@ -362,6 +475,11 @@ test("fails closed without retry on 429, CAPTCHA, or an unreliable translation",
     { name: "wrong target", response: { status: 200, responseText: validTranslation("Juego", { to: "es" }) } },
     { name: "contradictory language", response: { status: 200, responseText: validTranslation("Game", { language: "zh" }) } },
     { name: "duplicate translations", response: { status: 200, responseText: JSON.stringify([{ translations: [{ text: "Game", to: "en" }, { text: "Play", to: "en" }], detectedLanguage: { language: "ja" } }]) } },
+    { name: "wrong transliteration script", response: { status: 200, responseText: validTranslationWithTransliteration("Game", "game", { script: "Cyrl" }) } },
+    { name: "non-Latin transliteration", response: { status: 200, responseText: validTranslationWithTransliteration("Game", "ゲーム") } },
+    { name: "oversized transliteration", response: { status: 200, responseText: validTranslationWithTransliteration("Game", "g".repeat(1_001)) } },
+    { name: "extra transliteration metadata", response: { status: 200, responseText: validTranslationWithTransliteration("Game", "game", { extra: true }) } },
+    { name: "third response item", response: { status: 200, responseText: JSON.stringify([...JSON.parse(validTranslationWithTransliteration("Game", "game")), {}]) } },
     { name: "HTML", response: { status: 200, responseText: "<html>blocked</html>" } },
     { name: "status zero", response: { status: 0, responseText: validTranslation("Game") } },
     { name: "missing status", response: { responseText: validTranslation("Game") } },
@@ -374,6 +492,28 @@ test("fails closed without retry on 429, CAPTCHA, or an unreliable translation",
       const { requests, translating } = await initializedTranslation();
       respond(requests[1], testCase.response);
       await assert.rejects(translating);
+      assert.equal(requests.length, 2);
+    });
+  }
+});
+
+test("rejects an entire multiline batch when positional mapping is missing or unreliable", async (t) => {
+  const cases = [
+    { name: "missing line", translated: "Game" },
+    { name: "extra line", translated: "Game\nTelevision\nRadio" },
+    { name: "blank line", translated: "Game\n" },
+    { name: "unchanged line", translated: "Game\nテレビ" },
+    { name: "non-Latin line", translated: "Game\n电视" },
+  ];
+
+  for (const testCase of cases) {
+    await t.test(testCase.name, async () => {
+      const { requests, translating } = await initializedTranslation(["ゲーム", "テレビ"]);
+      respond(requests[1], {
+        status: 200,
+        responseText: validTranslation(testCase.translated),
+      });
+      await assert.rejects(translating, /no reliable Japanese-to-English translation/u);
       assert.equal(requests.length, 2);
     });
   }
@@ -431,7 +571,7 @@ test("aborts the active GM request, rejects late results, and allows a later ini
   assert.deepEqual(await second, new Map([["テレビ", "Television"]]));
 });
 
-async function initializedTranslation() {
+async function initializedTranslation(phrases = ["ゲーム"], clientOptions = {}) {
   const requests = [];
   const client = createBingTranslationClient({
     gmRequest(options) {
@@ -440,8 +580,9 @@ async function initializedTranslation() {
     },
     DOMParser,
     minimumIntervalMs: 0,
+    ...clientOptions,
   });
-  const translating = client.translatePhrases(["ゲーム"]);
+  const translating = client.translatePhrases(phrases);
   await waitFor(() => requests.length === 1);
   requests[0].onload({
     status: 200,
@@ -459,6 +600,21 @@ function validTranslation(text, { to = "en", language = "ja" } = {}) {
   }]);
 }
 
+function validTranslationWithTransliteration(
+  text,
+  transliteration,
+  { script = "Latn", extra = false } = {},
+) {
+  const metadata = { inputTransliteration: transliteration, script };
+  if (extra) {
+    metadata.extra = true;
+  }
+  return JSON.stringify([
+    JSON.parse(validTranslation(text))[0],
+    metadata,
+  ]);
+}
+
 function respond(request, response) {
   request.onload({
     ...response,
@@ -468,15 +624,19 @@ function respond(request, response) {
 
 function translatorHtml({
   ig = "A1B2C3D4E5F6",
+  igShape = "direct",
   iid = "translator.5023",
   helper = [123456789, "redacted-page-token", 3_600_000],
   before = "",
   after = "",
 } = {}) {
+  const igAssignment = igShape === "object"
+    ? `var _G = { Region: "CN", Lang: "zh-CN", IG: "${ig}", EventID: "redacted-event" };`
+    : `window._G.IG = "${ig}";`;
   return TRANSLATOR_FIXTURE
     .replace("{{BEFORE}}", before)
     .replace("{{IID}}", iid)
-    .replace("{{IG}}", ig)
+    .replace("{{IG_ASSIGNMENT}}", igAssignment)
     .replace("{{HELPER}}", JSON.stringify(helper))
     .replace("{{AFTER}}", after);
 }

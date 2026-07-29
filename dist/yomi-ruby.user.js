@@ -2,9 +2,9 @@
 // @name         YomiRuby
 // @name:zh-CN   日语网页注音助手
 // @namespace    yomi-ruby.local
-// @version      0.4.0
-// @description  Add local Kanji Romaji and optional online Katakana English ruby to Japanese web text.
-// @description:zh-CN  为日语网页添加本地汉字罗马音和可选的联网片假名英文注音。
+// @version      0.5.0
+// @description  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
+// @description:zh-CN  为日语网页添加可选本地或联网汉字罗马音，以及可选的联网片假名英文注音。
 // @homepageURL  https://github.com/ywu73/yomi-ruby
 // @supportURL   https://github.com/ywu73/yomi-ruby/issues
 // @downloadURL  https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js
@@ -35,6 +35,8 @@
 // @grant        GM_unregisterMenuCommand
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_addValueChangeListener
+// @grant        GM_removeValueChangeListener
 // ==/UserScript==
 //
 // YomiRuby copyright (c) 2026 ywu73.
@@ -3042,24 +3044,14 @@
     }
   }
 
-  // src/katakana.js
-  var KATAKANA_PHRASE = /[\u30A1-\u30FA\u30FD-\u30FF][\u3099\u309A\u30A1-\u30FF]*[\u3099\u309A\u30A1-\u30FA\u30FC-\u30FF]|[\uFF66-\uFF6F\uFF71-\uFF9D][\uFF65-\uFF9F]*[\uFF66-\uFF9F]/gu;
-  function findKatakanaMatches(text) {
-    if (typeof text !== "string" || text.length === 0) {
-      return [];
-    }
-    return [...text.matchAll(KATAKANA_PHRASE)].map((match) => ({
-      start: match.index,
-      end: match.index + match[0].length,
-      text: match[0]
-    }));
-  }
-
-  // src/bing-translation.js
+  // src/bing-kanji-romaji.js
   var INITIAL_URL = "https://www.bing.com/translator";
   var ALLOWED_HOSTS = /* @__PURE__ */ new Set(["www.bing.com", "cn.bing.com"]);
-  var LATIN_LETTER = new RegExp("\\p{Script=Latin}", "u");
-  function createBingTranslationClient({
+  var HAS_KANJI2 = new RegExp("\\p{Script=Han}", "u");
+  var SAFE_ROMAJI = /^[A-Za-zĀĪŪĒŌāīūēō'’-]+$/u;
+  var MAX_GLOBAL_OBJECT_CHARACTERS = 16384;
+  var MAX_ROMAJI_CHARACTERS = 1e3;
+  function createBingKanjiRomajiClient({
     gmRequest,
     DOMParser = globalThis.DOMParser,
     now = Date.now,
@@ -3067,10 +3059,10 @@
     minimumIntervalMs = 1e3,
     requestTimeoutMs = 8e3,
     refreshSkewMs = 6e4,
-    maxPhraseCharacters = 200
+    maxWordCharacters = 200
   }) {
     if (typeof gmRequest !== "function") {
-      throw new TypeError("A GM_xmlhttpRequest adapter is required for Bing translation.");
+      throw new TypeError("A GM_xmlhttpRequest adapter is required for Bing kanji romaji.");
     }
     if (typeof DOMParser !== "function") {
       throw new TypeError("A DOMParser is required for Bing translator initialization.");
@@ -3079,20 +3071,22 @@
     let configPromise = null;
     let operationQueue = Promise.resolve();
     let requestSequence = 0;
-    let lastTranslationStartedAt = null;
-    const translatePhrases = (phrases, { signal } = {}) => {
+    let lastRequestStartedAt = null;
+    const romanizeWords = (words, { signal } = {}) => {
       const operation = operationQueue.then(async () => {
         throwIfAborted(signal);
-        const uniquePhrases = [...new Set(phrases.filter((phrase) => isEligiblePhrase(
-          phrase,
-          maxPhraseCharacters
+        const uniqueWords = [...new Set(words.filter((word) => isEligibleWord(
+          word,
+          maxWordCharacters
         )))];
-        const translations = /* @__PURE__ */ new Map();
-        for (const phrase of uniquePhrases) {
-          const translated = await translatePhrase(phrase, signal);
-          translations.set(phrase, translated);
+        const readings = /* @__PURE__ */ new Map();
+        for (const word of uniqueWords) {
+          const romaji = await romanizeWord(word, signal);
+          if (romaji) {
+            readings.set(word, romaji);
+          }
         }
-        return translations;
+        return readings;
       });
       operationQueue = operation.catch(() => {
       });
@@ -3132,19 +3126,19 @@
       };
     }
     async function waitForTrafficSlot(signal) {
-      if (lastTranslationStartedAt == null || minimumIntervalMs <= 0) {
+      if (lastRequestStartedAt == null || minimumIntervalMs <= 0) {
         return;
       }
-      const remaining = minimumIntervalMs - (now() - lastTranslationStartedAt);
+      const remaining = minimumIntervalMs - (now() - lastRequestStartedAt);
       if (remaining > 0) {
         await sleep(remaining, { signal });
       }
     }
-    async function translatePhrase(phrase, signal) {
+    async function romanizeWord(word, signal) {
       let activeConfig = await getConfig(signal);
       await waitForTrafficSlot(signal);
       try {
-        return await requestPhrase(activeConfig, phrase, signal);
+        return await requestWord(activeConfig, word, signal);
       } catch (error) {
         if (!(error instanceof HttpError) || error.status !== 401 || signal?.aborted) {
           throw error;
@@ -3153,7 +3147,7 @@
         activeConfig = await getConfig(signal);
         await waitForTrafficSlot(signal);
         try {
-          return await requestPhrase(activeConfig, phrase, signal);
+          return await requestWord(activeConfig, word, signal);
         } catch (retryError) {
           if (retryError instanceof HttpError && retryError.status === 401) {
             config = null;
@@ -3162,9 +3156,9 @@
         }
       }
     }
-    async function requestPhrase(activeConfig, phrase, signal) {
+    async function requestWord(activeConfig, word, signal) {
       throwIfAborted(signal);
-      lastTranslationStartedAt = now();
+      lastRequestStartedAt = now();
       const url = new URL("/ttranslatev3", activeConfig.origin);
       url.searchParams.set("isVertical", "1");
       url.searchParams.set("IG", activeConfig.ig);
@@ -3174,8 +3168,8 @@
       url.searchParams.set("edgepdftranslator", "1");
       const data = new URLSearchParams({
         fromLang: "ja",
-        to: "en",
-        text: phrase,
+        to: "ja",
+        text: word,
         token: activeConfig.token,
         key: String(activeConfig.key),
         tryFetchingGenderDebiasedTranslations: "true"
@@ -3191,11 +3185,47 @@
         timeout: requestTimeoutMs,
         anonymous: true,
         redirect: "error"
-      }, { signal, label: "Bing translation" });
-      validateTranslationResponseUrl(response.finalUrl ?? response.responseURL, url);
-      return parseTranslation(response.responseText, phrase);
+      }, { signal, label: "Bing kanji romaji" });
+      validateResponseUrl(response.finalUrl ?? response.responseURL, url);
+      return parseRomajiResponse(response.responseText, word);
     }
-    return { translatePhrases };
+    return { romanizeWords };
+  }
+  function parseRomajiResponse(responseText, word) {
+    if (typeof responseText !== "string" || responseText.includes("ShowCaptcha")) {
+      return null;
+    }
+    let payload;
+    try {
+      payload = JSON.parse(responseText);
+    } catch {
+      return null;
+    }
+    if (!Array.isArray(payload) || payload.length !== 2) {
+      return null;
+    }
+    const result = payload[0];
+    const metadata = payload[1];
+    if (!Array.isArray(result?.translations) || result.translations.length !== 1) {
+      return null;
+    }
+    const translation = result.translations[0];
+    const echoed = typeof translation?.text === "string" ? translation.text.trim() : "";
+    if (echoed !== word || translation?.to !== "ja") {
+      return null;
+    }
+    if (metadata == null || typeof metadata !== "object" || Array.isArray(metadata)) {
+      return null;
+    }
+    const keys = Object.keys(metadata).sort();
+    if (keys.length !== 2 || keys[0] !== "inputTransliteration" || keys[1] !== "script") {
+      return null;
+    }
+    const romaji = metadata.inputTransliteration;
+    if (metadata.script !== "Latn" || typeof romaji !== "string" || romaji.length === 0 || romaji.length > MAX_ROMAJI_CHARACTERS || romaji !== romaji.trim() || !SAFE_ROMAJI.test(romaji)) {
+      return null;
+    }
+    return romaji;
   }
   function validateTranslatorUrl(value) {
     let url;
@@ -3225,10 +3255,12 @@
       throw new Error("Bing translator initialization returned an invalid IID.");
     }
     const scriptText = [...document2.scripts].map((script) => script.textContent ?? "").join("\n");
-    const igValues = collectMatches(
+    const directIgValues = collectMatches(
       scriptText,
       /window\._G\.IG\s*=\s*["']([A-Za-z0-9_-]{8,128})["']/gu
     );
+    const objectIgValues = collectObjectInitializerIgValues(scriptText);
+    const igValues = [...directIgValues, ...objectIgValues];
     const helperValues = collectMatches(
       scriptText,
       /params_AbusePreventionHelper\s*=\s*(\[[^;\r\n]{1,4096}\])/gu
@@ -3251,45 +3283,35 @@
     }
     return { ig: igValues[0], iid, key, token, expiryIntervalMs };
   }
-  function validateTranslationResponseUrl(value, requestedUrl) {
+  function validateResponseUrl(value, requestedUrl) {
     let finalUrl;
     try {
       finalUrl = new URL(value);
     } catch {
-      throw new Error("Bing translation returned no valid final URL.");
+      throw new Error("Bing kanji romaji returned no valid final URL.");
     }
     if (finalUrl.href !== requestedUrl.href) {
-      throw new Error("Bing translation redirected away from the approved request URL.");
+      throw new Error("Bing kanji romaji redirected away from the approved request URL.");
     }
   }
   function collectMatches(text, pattern) {
     return [...text.matchAll(pattern)].map((match) => match[1]);
   }
-  function parseTranslation(responseText, phrase) {
-    if (typeof responseText !== "string" || responseText.includes("ShowCaptcha")) {
-      throw new Error("Bing translation returned CAPTCHA or invalid content.");
-    }
-    const payload = JSON.parse(responseText);
-    if (!Array.isArray(payload) || payload.length !== 1) {
-      throw new Error("Bing translation returned an unexpected response structure.");
-    }
-    const result = payload[0];
-    if (!Array.isArray(result?.translations) || result.translations.length !== 1) {
-      throw new Error("Bing translation returned an ambiguous response.");
-    }
-    const candidate = result.translations[0];
-    const translated = typeof candidate?.text === "string" ? candidate.text.trim() : "";
-    if (!translated || translated === phrase || !LATIN_LETTER.test(translated) || candidate.to != null && candidate.to !== "en" || result.detectedLanguage?.language != null && result.detectedLanguage.language !== "ja") {
-      throw new Error("Bing translation returned no reliable Japanese-to-English translation.");
-    }
-    return translated;
+  function collectObjectInitializerIgValues(scriptText) {
+    const objectBodies = collectMatches(
+      scriptText,
+      new RegExp(
+        String.raw`(?:^|[;\r\n])\s*(?:var\s+)?(?:window\.)?_G\s*=\s*\{([^;\r\n]{1,${MAX_GLOBAL_OBJECT_CHARACTERS}})\}\s*;`,
+        "gu"
+      )
+    );
+    return objectBodies.flatMap((body) => collectMatches(
+      body,
+      /(?:^|,)\s*IG\s*:\s*["']([A-Za-z0-9_-]{8,128})["'](?=\s*(?:,|$))/gu
+    ));
   }
-  function isEligiblePhrase(phrase, maxPhraseCharacters) {
-    if (typeof phrase !== "string" || phrase.length === 0 || phrase.length > maxPhraseCharacters) {
-      return false;
-    }
-    const matches = findKatakanaMatches(phrase);
-    return matches.length === 1 && matches[0].start === 0 && matches[0].end === phrase.length;
+  function isEligibleWord(word, maxWordCharacters) {
+    return typeof word === "string" && word.length > 0 && word.length <= maxWordCharacters && word === word.trim() && !/[\r\n\u0000-\u001f\u007f]/u.test(word) && HAS_KANJI2.test(word);
   }
   function request(gmRequest, options, { signal, label }) {
     return new Promise((resolve, reject) => {
@@ -3346,7 +3368,7 @@
     }
   }
   function abortError() {
-    return new DOMException("The Bing translation was aborted.", "AbortError");
+    return new DOMException("Bing kanji romaji was aborted.", "AbortError");
   }
   function wait(milliseconds, { signal } = {}) {
     return new Promise((resolve, reject) => {
@@ -3359,6 +3381,408 @@
         clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
         reject(abortError());
+      };
+      function finish() {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  // src/katakana.js
+  var KATAKANA_PHRASE = /[\u30A1-\u30FA\u30FD-\u30FF][\u3099\u309A\u30A1-\u30FF]*[\u3099\u309A\u30A1-\u30FA\u30FC-\u30FF]|[\uFF66-\uFF6F\uFF71-\uFF9D][\uFF65-\uFF9F]*[\uFF66-\uFF9F]/gu;
+  function findKatakanaMatches(text) {
+    if (typeof text !== "string" || text.length === 0) {
+      return [];
+    }
+    return [...text.matchAll(KATAKANA_PHRASE)].map((match) => ({
+      start: match.index,
+      end: match.index + match[0].length,
+      text: match[0]
+    }));
+  }
+
+  // src/bing-translation.js
+  var INITIAL_URL2 = "https://www.bing.com/translator";
+  var ALLOWED_HOSTS2 = /* @__PURE__ */ new Set(["www.bing.com", "cn.bing.com"]);
+  var LATIN_LETTER = new RegExp("\\p{Script=Latin}", "u");
+  var MAX_GLOBAL_OBJECT_CHARACTERS2 = 16384;
+  var MAX_TRANSLITERATION_CHARACTERS = 1e3;
+  function createBingTranslationClient({
+    gmRequest,
+    DOMParser = globalThis.DOMParser,
+    now = Date.now,
+    sleep = wait2,
+    maxPhrasesPerRequest = 50,
+    maxEncodedTextLength = 1800,
+    minimumIntervalMs = 250,
+    requestTimeoutMs = 8e3,
+    refreshSkewMs = 6e4,
+    maxPhraseCharacters = 200
+  }) {
+    if (typeof gmRequest !== "function") {
+      throw new TypeError("A GM_xmlhttpRequest adapter is required for Bing translation.");
+    }
+    if (typeof DOMParser !== "function") {
+      throw new TypeError("A DOMParser is required for Bing translator initialization.");
+    }
+    if (!Number.isInteger(maxPhrasesPerRequest) || maxPhrasesPerRequest < 1) {
+      throw new TypeError("maxPhrasesPerRequest must be a positive integer.");
+    }
+    if (!Number.isInteger(maxEncodedTextLength) || maxEncodedTextLength < 1) {
+      throw new TypeError("maxEncodedTextLength must be a positive integer.");
+    }
+    let config = null;
+    let configPromise = null;
+    let operationQueue = Promise.resolve();
+    let requestSequence = 0;
+    let lastBatchStartedAt = null;
+    const translatePhrases = (phrases, { signal } = {}) => {
+      const operation = operationQueue.then(async () => {
+        throwIfAborted2(signal);
+        const uniquePhrases = [...new Set(phrases.filter((phrase) => isEligiblePhrase(
+          phrase,
+          maxPhraseCharacters
+        )))];
+        const translations = /* @__PURE__ */ new Map();
+        const batches = buildBatches(uniquePhrases, {
+          maxPhrasesPerRequest,
+          maxEncodedTextLength
+        });
+        for (const batch of batches) {
+          const translatedBatch = await translateBatch(batch, signal);
+          for (const [phrase, translated] of translatedBatch) {
+            translations.set(phrase, translated);
+          }
+        }
+        return translations;
+      });
+      operationQueue = operation.catch(() => {
+      });
+      return operation;
+    };
+    async function getConfig(signal) {
+      if (config && now() < config.expiresAt - config.refreshSkew) {
+        return config;
+      }
+      if (!configPromise) {
+        configPromise = loadConfig(signal).then((loaded) => {
+          config = loaded;
+          return loaded;
+        }).finally(() => {
+          configPromise = null;
+        });
+      }
+      return configPromise;
+    }
+    async function loadConfig(signal) {
+      const response = await request2(gmRequest, {
+        method: "GET",
+        url: INITIAL_URL2,
+        timeout: requestTimeoutMs,
+        anonymous: true,
+        redirect: "follow"
+      }, { signal, label: "Bing translator initialization" });
+      const finalUrl = validateTranslatorUrl2(response.finalUrl ?? response.responseURL);
+      const parsed = parseConfig2(response.responseText, DOMParser);
+      const refreshSkew = Math.min(refreshSkewMs, Math.floor(parsed.expiryIntervalMs / 10));
+      return {
+        ...parsed,
+        origin: finalUrl.origin,
+        pageUrl: finalUrl.href,
+        expiresAt: now() + parsed.expiryIntervalMs,
+        refreshSkew
+      };
+    }
+    async function waitForTrafficSlot(signal) {
+      if (lastBatchStartedAt == null || minimumIntervalMs <= 0) {
+        return;
+      }
+      const remaining = minimumIntervalMs - (now() - lastBatchStartedAt);
+      if (remaining > 0) {
+        await sleep(remaining, { signal });
+      }
+    }
+    async function translateBatch(phrases, signal) {
+      let activeConfig = await getConfig(signal);
+      await waitForTrafficSlot(signal);
+      try {
+        return await requestBatch(activeConfig, phrases, signal);
+      } catch (error) {
+        if (!(error instanceof HttpError2) || error.status !== 401 || signal?.aborted) {
+          throw error;
+        }
+        config = null;
+        activeConfig = await getConfig(signal);
+        await waitForTrafficSlot(signal);
+        try {
+          return await requestBatch(activeConfig, phrases, signal);
+        } catch (retryError) {
+          if (retryError instanceof HttpError2 && retryError.status === 401) {
+            config = null;
+          }
+          throw retryError;
+        }
+      }
+    }
+    async function requestBatch(activeConfig, phrases, signal) {
+      throwIfAborted2(signal);
+      lastBatchStartedAt = now();
+      const url = new URL("/ttranslatev3", activeConfig.origin);
+      url.searchParams.set("isVertical", "1");
+      url.searchParams.set("IG", activeConfig.ig);
+      url.searchParams.set("IID", activeConfig.iid);
+      url.searchParams.set("SFX", String(++requestSequence));
+      url.searchParams.set("ref", "TThis");
+      url.searchParams.set("edgepdftranslator", "1");
+      const data = new URLSearchParams({
+        fromLang: "ja",
+        to: "en",
+        text: phrases.join("\n"),
+        token: activeConfig.token,
+        key: String(activeConfig.key),
+        tryFetchingGenderDebiasedTranslations: "true"
+      });
+      const response = await request2(gmRequest, {
+        method: "POST",
+        url: url.href,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          Referer: activeConfig.pageUrl
+        },
+        data: data.toString(),
+        timeout: requestTimeoutMs,
+        anonymous: true,
+        redirect: "error"
+      }, { signal, label: "Bing translation" });
+      validateTranslationResponseUrl(response.finalUrl ?? response.responseURL, url);
+      return parseTranslations(response.responseText, phrases);
+    }
+    return { translatePhrases };
+  }
+  function validateTranslatorUrl2(value) {
+    let url;
+    try {
+      url = new URL(value);
+    } catch {
+      throw new Error("Bing translator initialization returned no valid final URL.");
+    }
+    if (url.protocol !== "https:" || !ALLOWED_HOSTS2.has(url.hostname) || url.pathname !== "/translator" && url.pathname !== "/translator/" || url.username || url.password || url.port) {
+      throw new Error("Bing translator initialization redirected outside the approved hosts or path.");
+    }
+    url.hash = "";
+    url.search = "";
+    return url;
+  }
+  function parseConfig2(html, DOMParser) {
+    if (typeof html !== "string" || html.length === 0 || html.length > 2e6) {
+      throw new Error("Bing translator initialization returned invalid HTML.");
+    }
+    const document2 = new DOMParser().parseFromString(html, "text/html");
+    const richContainers = document2.querySelectorAll("#rich_tta[data-iid]");
+    if (richContainers.length !== 1) {
+      throw new Error("Bing translator initialization returned an ambiguous translation container.");
+    }
+    const iid = richContainers[0].getAttribute("data-iid")?.trim() ?? "";
+    if (!/^translator\.\d{1,12}$/u.test(iid)) {
+      throw new Error("Bing translator initialization returned an invalid IID.");
+    }
+    const scriptText = [...document2.scripts].map((script) => script.textContent ?? "").join("\n");
+    const directIgValues = collectMatches2(
+      scriptText,
+      /window\._G\.IG\s*=\s*["']([A-Za-z0-9_-]{8,128})["']/gu
+    );
+    const objectIgValues = collectObjectInitializerIgValues2(scriptText);
+    const igValues = [...directIgValues, ...objectIgValues];
+    const helperValues = collectMatches2(
+      scriptText,
+      /params_AbusePreventionHelper\s*=\s*(\[[^;\r\n]{1,4096}\])/gu
+    );
+    if (igValues.length !== 1 || helperValues.length !== 1) {
+      throw new Error("Bing translator initialization returned missing or ambiguous configuration.");
+    }
+    let helper;
+    try {
+      helper = JSON.parse(helperValues[0]);
+    } catch {
+      throw new Error("Bing translator initialization returned malformed abuse-prevention configuration.");
+    }
+    if (!Array.isArray(helper) || helper.length !== 3) {
+      throw new Error("Bing translator initialization returned invalid abuse-prevention configuration.");
+    }
+    const [key, token, expiryIntervalMs] = helper;
+    if (!Number.isSafeInteger(key) || key <= 0 || typeof token !== "string" || token.length === 0 || token.length > 2048 || !Number.isSafeInteger(expiryIntervalMs) || expiryIntervalMs <= 0 || expiryIntervalMs > 864e5) {
+      throw new Error("Bing translator initialization returned invalid temporary credentials.");
+    }
+    return { ig: igValues[0], iid, key, token, expiryIntervalMs };
+  }
+  function validateTranslationResponseUrl(value, requestedUrl) {
+    let finalUrl;
+    try {
+      finalUrl = new URL(value);
+    } catch {
+      throw new Error("Bing translation returned no valid final URL.");
+    }
+    if (finalUrl.href !== requestedUrl.href) {
+      throw new Error("Bing translation redirected away from the approved request URL.");
+    }
+  }
+  function collectMatches2(text, pattern) {
+    return [...text.matchAll(pattern)].map((match) => match[1]);
+  }
+  function collectObjectInitializerIgValues2(scriptText) {
+    const objectBodies = collectMatches2(
+      scriptText,
+      new RegExp(
+        String.raw`(?:^|[;\r\n])\s*(?:var\s+)?(?:window\.)?_G\s*=\s*\{([^;\r\n]{1,${MAX_GLOBAL_OBJECT_CHARACTERS2}})\}\s*;`,
+        "gu"
+      )
+    );
+    return objectBodies.flatMap((body) => collectMatches2(
+      body,
+      /(?:^|,)\s*IG\s*:\s*["']([A-Za-z0-9_-]{8,128})["'](?=\s*(?:,|$))/gu
+    ));
+  }
+  function parseTranslations(responseText, phrases) {
+    if (typeof responseText !== "string" || responseText.includes("ShowCaptcha")) {
+      throw new Error("Bing translation returned CAPTCHA or invalid content.");
+    }
+    const payload = JSON.parse(responseText);
+    if (!Array.isArray(payload) || payload.length < 1 || payload.length > 2) {
+      throw new Error("Bing translation returned an unexpected response structure.");
+    }
+    if (payload.length === 2 && !isValidInputTransliteration(payload[1])) {
+      throw new Error("Bing translation returned unexpected transliteration metadata.");
+    }
+    const result = payload[0];
+    if (!Array.isArray(result?.translations) || result.translations.length !== 1) {
+      throw new Error("Bing translation returned an ambiguous response.");
+    }
+    const candidate = result.translations[0];
+    const translatedLines = typeof candidate?.text === "string" ? candidate.text.split(/\r?\n/u).map((line) => line.trim()) : [];
+    if (translatedLines.length !== phrases.length || candidate?.to != null && candidate.to !== "en" || result.detectedLanguage?.language != null && result.detectedLanguage.language !== "ja") {
+      throw new Error("Bing translation returned no reliable Japanese-to-English translation.");
+    }
+    const translations = /* @__PURE__ */ new Map();
+    for (let index = 0; index < phrases.length; index += 1) {
+      const phrase = phrases[index];
+      const translated = translatedLines[index];
+      if (!translated || translated === phrase || !LATIN_LETTER.test(translated)) {
+        throw new Error("Bing translation returned no reliable Japanese-to-English translation.");
+      }
+      translations.set(phrase, translated);
+    }
+    return translations;
+  }
+  function isValidInputTransliteration(value) {
+    if (value == null || typeof value !== "object" || Array.isArray(value)) {
+      return false;
+    }
+    const keys = Object.keys(value).sort();
+    if (keys.length !== 2 || keys[0] !== "inputTransliteration" || keys[1] !== "script") {
+      return false;
+    }
+    const transliteration = value.inputTransliteration;
+    return typeof transliteration === "string" && transliteration.length > 0 && transliteration.length <= MAX_TRANSLITERATION_CHARACTERS && transliteration === transliteration.trim() && LATIN_LETTER.test(transliteration) && value.script === "Latn";
+  }
+  function isEligiblePhrase(phrase, maxPhraseCharacters) {
+    if (typeof phrase !== "string" || phrase.length === 0 || phrase.length > maxPhraseCharacters) {
+      return false;
+    }
+    const matches = findKatakanaMatches(phrase);
+    return matches.length === 1 && matches[0].start === 0 && matches[0].end === phrase.length;
+  }
+  function buildBatches(phrases, { maxPhrasesPerRequest, maxEncodedTextLength }) {
+    const batches = [];
+    let batch = [];
+    for (const phrase of phrases) {
+      if (encodedTextLength([phrase]) > maxEncodedTextLength) {
+        continue;
+      }
+      const candidate = [...batch, phrase];
+      if (batch.length > 0 && (candidate.length > maxPhrasesPerRequest || encodedTextLength(candidate) > maxEncodedTextLength)) {
+        batches.push(batch);
+        batch = [];
+      }
+      batch.push(phrase);
+    }
+    if (batch.length > 0) {
+      batches.push(batch);
+    }
+    return batches;
+  }
+  function encodedTextLength(phrases) {
+    return encodeURIComponent(phrases.join("\n")).length;
+  }
+  function request2(gmRequest, options, { signal, label }) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(abortError2());
+        return;
+      }
+      let settled = false;
+      let handle;
+      const finish = (callback, value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        signal?.removeEventListener("abort", onAbort);
+        callback(value);
+      };
+      const onAbort = () => {
+        handle?.abort?.();
+        finish(reject, abortError2());
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      handle = gmRequest({
+        ...options,
+        onload(response) {
+          if (!Number.isInteger(response?.status) || response.status < 200 || response.status >= 300) {
+            const status = Number.isInteger(response?.status) ? response.status : "unknown";
+            finish(reject, new HttpError2(`${label} returned HTTP ${status}.`, response?.status));
+            return;
+          }
+          finish(resolve, response ?? {});
+        },
+        onerror(response) {
+          finish(reject, new Error(response?.statusText || `${label} request failed.`));
+        },
+        ontimeout() {
+          finish(reject, new Error(`${label} request timed out.`));
+        },
+        onabort() {
+          finish(reject, abortError2());
+        }
+      });
+    });
+  }
+  var HttpError2 = class extends Error {
+    constructor(message, status) {
+      super(message);
+      this.status = status;
+    }
+  };
+  function throwIfAborted2(signal) {
+    if (signal?.aborted) {
+      throw abortError2();
+    }
+  }
+  function abortError2() {
+    return new DOMException("The Bing translation was aborted.", "AbortError");
+  }
+  function wait2(milliseconds, { signal } = {}) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(abortError2());
+        return;
+      }
+      const timer = setTimeout(finish, milliseconds);
+      const onAbort = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        reject(abortError2());
       };
       function finish() {
         signal?.removeEventListener("abort", onAbort);
@@ -3482,95 +3906,88 @@
   var AnnotationCoordinator = class {
     constructor({
       document: document2,
-      IntersectionObserver = document2.defaultView?.IntersectionObserver,
-      MutationObserver = document2.defaultView?.MutationObserver,
-      requestIdleCallback = document2.defaultView?.requestIdleCallback?.bind(document2.defaultView),
-      cancelIdleCallback = document2.defaultView?.cancelIdleCallback?.bind(document2.defaultView)
+      MutationObserver = document2?.defaultView?.MutationObserver,
+      setTimer = document2?.defaultView?.setTimeout?.bind(document2.defaultView) ?? globalThis.setTimeout,
+      clearTimer = document2?.defaultView?.clearTimeout?.bind(document2.defaultView) ?? globalThis.clearTimeout,
+      requestIdleCallback = document2?.defaultView?.requestIdleCallback?.bind(document2.defaultView),
+      cancelIdleCallback = document2?.defaultView?.cancelIdleCallback?.bind(document2.defaultView),
+      flushDelayMs = 500,
+      scanBatchSize = 100
     }) {
       if (!document2) {
         throw new TypeError("An AnnotationCoordinator requires a document.");
       }
       this.document = document2;
-      this.IntersectionObserver = IntersectionObserver;
       this.MutationObserver = MutationObserver;
+      this.setTimer = setTimer;
+      this.clearTimer = clearTimer;
       this.requestIdleCallback = requestIdleCallback;
       this.cancelIdleCallback = cancelIdleCallback;
-      this.kanjiAnalyzer = null;
-      this.katakanaTranslator = null;
+      this.flushDelayMs = flushDelayMs;
+      this.scanBatchSize = scanBatchSize;
+      this.kanjiRuntime = null;
+      this.katakanaRuntime = null;
       this.active = false;
+      this.hidden = document2.visibilityState === "hidden";
       this.records = /* @__PURE__ */ new Set();
       this.nodeRecords = /* @__PURE__ */ new WeakMap();
-      this.pendingNodes = /* @__PURE__ */ new Set();
-      this.waitingByElement = /* @__PURE__ */ new Map();
-      this.translationCache = /* @__PURE__ */ new Map();
-      this.translationQueue = /* @__PURE__ */ new Set();
-      this.translationActiveGeneration = null;
-      this.katakanaGeneration = 0;
-      this.katakanaAbortController = null;
-      this.translationFlushScheduled = false;
-      this.idleHandle = null;
+      this.pendingRoots = /* @__PURE__ */ new Set();
+      this.pendingNodes = [];
+      this.pendingNodeSet = /* @__PURE__ */ new Set();
+      this.flushTimer = null;
+      this.scanHandle = null;
       this.mutationObserver = null;
-      this.intersectionObserver = null;
+      this.onVisibilityChange = () => this.#handleVisibilityChange();
     }
-    enableKanji(analyzeText) {
-      if (typeof analyzeText !== "function") {
-        throw new TypeError("enableKanji requires an analyzer function.");
-      }
-      this.kanjiAnalyzer = analyzeText;
+    enableKanji(runtime) {
+      assertRuntime(runtime, "Kanji");
+      this.kanjiRuntime = runtime;
       this.#ensureActive();
       convertExistingKanaRuby(this.document);
-      for (const record of this.records) {
-        this.#processRecord(record);
-      }
+      this.#reprocessAll();
+      this.#queueRoot(this.document.body ?? this.document.documentElement, { immediate: true });
     }
     disableKanji() {
-      this.kanjiAnalyzer = null;
+      const runtime = this.kanjiRuntime;
+      this.kanjiRuntime = null;
       restoreConvertedKanaRuby(this.document);
-      if (!this.katakanaTranslator) {
+      for (const record of this.records) {
+        runtime?.forget(record);
+      }
+      if (!this.katakanaRuntime) {
         this.#stop();
         return;
       }
-      for (const record of this.records) {
-        this.#processRecord(record);
-      }
+      this.#reprocessAll();
     }
-    enableKatakana(translatePhrases) {
-      if (typeof translatePhrases !== "function") {
-        throw new TypeError("enableKatakana requires a translation function.");
-      }
-      this.katakanaGeneration += 1;
-      this.katakanaAbortController?.abort();
-      this.katakanaAbortController = new AbortController();
-      this.katakanaTranslator = translatePhrases;
-      this.translationCache.clear();
-      this.translationQueue.clear();
+    enableKatakana(runtime) {
+      assertRuntime(runtime, "Katakana");
+      this.katakanaRuntime = runtime;
       this.#ensureActive();
-      for (const record of this.records) {
-        this.#processRecord(record);
-      }
+      this.#reprocessAll();
+      this.#queueRoot(this.document.body ?? this.document.documentElement, { immediate: true });
     }
     disableKatakana() {
-      this.katakanaGeneration += 1;
-      this.katakanaAbortController?.abort();
-      this.katakanaAbortController = null;
-      this.katakanaTranslator = null;
-      this.translationCache.clear();
-      this.translationQueue.clear();
-      this.translationFlushScheduled = false;
-      if (!this.kanjiAnalyzer) {
+      const runtime = this.katakanaRuntime;
+      this.katakanaRuntime = null;
+      for (const record of this.records) {
+        runtime?.forget(record);
+      }
+      if (!this.kanjiRuntime) {
         this.#stop();
         return;
       }
-      for (const record of this.records) {
-        this.#processRecord(record);
+      this.#reprocessAll();
+    }
+    refresh(record) {
+      if (!this.active || this.hidden || !this.records.has(record)) {
+        return;
       }
+      this.#processRecord(record);
     }
     stop() {
-      this.kanjiAnalyzer = null;
-      this.katakanaTranslator = null;
-      this.katakanaGeneration += 1;
-      this.katakanaAbortController?.abort();
-      this.katakanaAbortController = null;
+      this.kanjiRuntime = null;
+      this.katakanaRuntime = null;
       this.#stop();
     }
     #ensureActive() {
@@ -3578,21 +3995,20 @@
         return;
       }
       this.active = true;
-      if (this.IntersectionObserver) {
-        this.intersectionObserver = new this.IntersectionObserver(
-          (entries) => this.#onIntersections(entries),
-          { root: null, rootMargin: "800px 0px", threshold: 0 }
-        );
-      }
+      this.hidden = this.document.visibilityState === "hidden";
+      this.document.addEventListener("visibilitychange", this.onVisibilityChange);
       if (this.MutationObserver) {
-        this.mutationObserver = new this.MutationObserver((records) => this.#onMutations(records));
+        this.mutationObserver = new this.MutationObserver((mutations) => this.#onMutations(mutations));
         this.mutationObserver.observe(this.document.body ?? this.document.documentElement, {
           childList: true,
           characterData: true,
           subtree: true
         });
       }
-      this.#scan(this.document.body ?? this.document.documentElement);
+      if (this.hidden) {
+        this.kanjiRuntime?.pause();
+        this.katakanaRuntime?.pause();
+      }
     }
     #stop() {
       if (!this.active) {
@@ -3600,37 +4016,108 @@
         return;
       }
       this.active = false;
+      this.document.removeEventListener("visibilitychange", this.onVisibilityChange);
       this.mutationObserver?.disconnect();
-      this.intersectionObserver?.disconnect();
       this.mutationObserver = null;
-      this.intersectionObserver = null;
-      if (this.idleHandle != null && this.cancelIdleCallback) {
-        this.cancelIdleCallback(this.idleHandle);
-      }
-      this.idleHandle = null;
-      this.pendingNodes.clear();
-      this.waitingByElement.clear();
-      this.translationQueue.clear();
+      this.#cancelScheduledWork();
+      this.pendingRoots.clear();
+      this.pendingNodes.length = 0;
+      this.pendingNodeSet.clear();
       for (const record of this.records) {
         this.#restoreRecord(record);
       }
       this.records.clear();
-      this.translationCache.clear();
       restoreConvertedKanaRuby(this.document);
       this.document.normalize?.();
     }
-    #scan(root) {
-      if (!this.active || !root?.isConnected) {
+    #handleVisibilityChange() {
+      if (!this.active) {
+        return;
+      }
+      this.hidden = this.document.visibilityState === "hidden";
+      if (this.hidden) {
+        this.kanjiRuntime?.pause();
+        this.katakanaRuntime?.pause();
+        this.#cancelScheduledWork();
+        return;
+      }
+      this.kanjiRuntime?.resume();
+      this.katakanaRuntime?.resume();
+      this.#discardDetachedRecords();
+      this.#reprocessAll();
+      this.#queueRoot(this.document.body ?? this.document.documentElement, { immediate: true });
+    }
+    #onMutations(mutations) {
+      if (!this.active) {
+        return;
+      }
+      for (const mutation of mutations) {
+        if (mutation.type === "characterData") {
+          const record = this.nodeRecords.get(mutation.target);
+          if (record && this.#recordIsCurrent(record)) {
+            continue;
+          }
+          if (record) {
+            this.#discardRecord(record);
+          }
+          this.pendingRoots.add(mutation.target);
+          continue;
+        }
+        for (const node of mutation.removedNodes) {
+          this.#discardDetachedOwnership(node);
+        }
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === 1 && node.closest?.("[data-yomi-ruby-generated], [data-yomi-ruby-converted-rt]")) {
+            continue;
+          }
+          this.pendingRoots.add(node);
+        }
+      }
+      this.#scheduleFlush();
+    }
+    #queueRoot(root, { immediate = false } = {}) {
+      if (!this.active || !root) {
+        return;
+      }
+      this.pendingRoots.add(root);
+      if (immediate && !this.hidden) {
+        this.#flushRoots();
+      } else {
+        this.#scheduleFlush();
+      }
+    }
+    #scheduleFlush() {
+      if (!this.active || this.hidden || this.flushTimer != null) {
+        return;
+      }
+      this.flushTimer = this.setTimer(() => {
+        this.flushTimer = null;
+        this.#flushRoots();
+      }, this.flushDelayMs);
+    }
+    #flushRoots() {
+      if (!this.active || this.hidden) {
+        return;
+      }
+      const roots = [...this.pendingRoots];
+      this.pendingRoots.clear();
+      for (const root of roots) {
+        this.#collectTextNodes(root);
+      }
+      this.#scheduleNodeDrain();
+    }
+    #collectTextNodes(root) {
+      if (!root?.isConnected) {
         return;
       }
       if (root.nodeType === 3) {
-        this.#waitForViewport(root);
+        this.#enqueueTextNode(root);
         return;
       }
-      if (root.nodeType !== 1 && root.nodeType !== 9 && root.nodeType !== 11) {
+      if (![1, 9, 11].includes(root.nodeType)) {
         return;
       }
-      if (this.kanjiAnalyzer) {
+      if (this.kanjiRuntime) {
         convertExistingKanaRuby(root);
       }
       const walker = this.document.createTreeWalker(
@@ -3639,125 +4126,43 @@
         { acceptNode: (node) => shouldSkipTextNode(node) || this.nodeRecords.has(node) ? this.document.defaultView.NodeFilter.FILTER_REJECT : this.document.defaultView.NodeFilter.FILTER_ACCEPT }
       );
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        this.#waitForViewport(node);
+        this.#enqueueTextNode(node);
       }
     }
-    #waitForViewport(node) {
-      if (!this.active || this.nodeRecords.has(node) || shouldSkipTextNode(node)) {
+    #enqueueTextNode(node) {
+      if (!node?.isConnected || this.nodeRecords.has(node) || this.pendingNodeSet.has(node) || shouldSkipTextNode(node)) {
         return;
       }
-      if (!this.intersectionObserver) {
-        this.#enqueueNode(node);
-        return;
-      }
-      const element = node.parentElement;
-      let nodes = this.waitingByElement.get(element);
-      if (!nodes) {
-        nodes = /* @__PURE__ */ new Set();
-        this.waitingByElement.set(element, nodes);
-        this.intersectionObserver.observe(element);
-      }
-      nodes.add(node);
+      this.pendingNodeSet.add(node);
+      this.pendingNodes.push(node);
     }
-    #onIntersections(entries) {
-      if (!this.active) {
-        return;
-      }
-      for (const entry of entries) {
-        if (!entry.isIntersecting) {
-          continue;
-        }
-        this.intersectionObserver.unobserve(entry.target);
-        const nodes = this.waitingByElement.get(entry.target) ?? [];
-        this.waitingByElement.delete(entry.target);
-        for (const node of nodes) {
-          this.#enqueueNode(node);
-        }
-      }
-    }
-    #onMutations(records) {
-      if (!this.active) {
-        return;
-      }
-      for (const mutation of records) {
-        if (mutation.type === "characterData") {
-          const record = this.nodeRecords.get(mutation.target);
-          if (record) {
-            record.valid = false;
-            continue;
-          }
-          this.#scan(mutation.target);
-          continue;
-        }
-        for (const node of mutation.removedNodes) {
-          this.#discardDetachedOwnership(node);
-        }
-        this.#discardDetachedViewportWork();
-        for (const node of mutation.addedNodes) {
-          if (this.nodeRecords.has(node)) {
-            continue;
-          }
-          if (node.nodeType === 1 && node.closest?.("[data-yomi-ruby-generated], [data-yomi-ruby-converted-rt]")) {
-            continue;
-          }
-          this.#scan(node);
-        }
-      }
-    }
-    #discardDetachedOwnership(root) {
-      const records = /* @__PURE__ */ new Set();
-      const stack = [root];
-      while (stack.length) {
-        const node = stack.pop();
-        const record = this.nodeRecords.get(node);
-        if (record) {
-          records.add(record);
-        }
-        stack.push(...node.childNodes);
-      }
-      for (const record of records) {
-        if (record.currentNodes.some((node) => !node.isConnected)) {
-          this.#discardRecord(record);
-        }
-      }
-    }
-    #discardDetachedViewportWork() {
-      for (const node of this.pendingNodes) {
-        if (!node.isConnected) {
-          this.pendingNodes.delete(node);
-        }
-      }
-      for (const [element] of this.waitingByElement) {
-        if (!element.isConnected) {
-          this.intersectionObserver?.unobserve(element);
-          this.waitingByElement.delete(element);
-        }
-      }
-    }
-    #enqueueNode(node) {
-      if (!this.active || !node.isConnected || this.nodeRecords.has(node) || shouldSkipTextNode(node)) {
-        return;
-      }
-      this.pendingNodes.add(node);
-      if (this.idleHandle != null) {
+    #scheduleNodeDrain() {
+      if (!this.active || this.hidden || this.scanHandle != null || this.pendingNodes.length === 0) {
         return;
       }
       if (this.requestIdleCallback) {
-        this.idleHandle = this.requestIdleCallback((deadline) => this.#drainNodes(deadline), { timeout: 500 });
-      } else {
-        this.#drainNodes({ didTimeout: true, timeRemaining: () => 0 });
-      }
-    }
-    #drainNodes(deadline) {
-      this.idleHandle = null;
-      if (!this.active) {
+        this.scanHandle = this.requestIdleCallback((deadline) => this.#drainNodes(deadline), {
+          timeout: this.flushDelayMs
+        });
         return;
       }
-      while (this.pendingNodes.size && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
-        const node = this.pendingNodes.values().next().value;
-        this.pendingNodes.delete(node);
+      this.scanHandle = this.setTimer(() => this.#drainNodes({
+        didTimeout: true,
+        timeRemaining: () => 0
+      }), 0);
+    }
+    #drainNodes(deadline) {
+      this.scanHandle = null;
+      if (!this.active || this.hidden) {
+        return;
+      }
+      let processed = 0;
+      while (this.pendingNodes.length > 0 && processed < this.scanBatchSize && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
+        const node = this.pendingNodes.shift();
+        this.pendingNodeSet.delete(node);
         if (node.isConnected && !this.nodeRecords.has(node) && !shouldSkipTextNode(node)) {
           const record = {
+            text: node.textContent,
             originalText: node.textContent,
             currentNodes: [node],
             planKey: null,
@@ -3767,126 +4172,55 @@
           this.nodeRecords.set(node, record);
           this.#processRecord(record);
         }
+        processed += 1;
       }
-      if (this.pendingNodes.size && this.requestIdleCallback) {
-        this.idleHandle = this.requestIdleCallback((next) => this.#drainNodes(next), { timeout: 500 });
-      }
+      this.#scheduleNodeDrain();
     }
     #processRecord(record) {
       if (!this.#recordIsCurrent(record)) {
-        record.valid = false;
+        this.#discardRecord(record);
         return;
       }
-      const katakanaMatches = this.katakanaTranslator ? findKatakanaMatches(record.originalText) : [];
-      if (this.katakanaTranslator) {
-        this.#queueKatakana(record, katakanaMatches);
-      }
-      const blockedRanges = katakanaMatches.filter((match) => {
-        const status = this.translationCache.get(match.text)?.status;
-        return status === "pending" || status === "success";
-      });
+      const katakanaPlan = this.katakanaRuntime?.plan(record) ?? {
+        ranges: [],
+        reservations: []
+      };
+      const kanjiPlan = this.kanjiRuntime?.plan(record) ?? { ranges: [] };
       const annotations = [];
-      if (this.kanjiAnalyzer) {
-        for (const range of annotationRanges(record.originalText, this.kanjiAnalyzer)) {
-          if (!blockedRanges.some((blocked) => overlaps(range, blocked))) {
-            annotations.push({ ...range, feature: "kanji" });
-          }
+      for (const range of kanjiPlan.ranges) {
+        if (!katakanaPlan.reservations.some((reserved) => overlaps(range, reserved))) {
+          annotations.push({ ...range, feature: "kanji" });
         }
       }
-      for (const match of katakanaMatches) {
-        const cached = this.translationCache.get(match.text);
-        if (cached?.status === "success") {
-          annotations.push({
-            ...match,
-            feature: "katakana",
-            annotation: cached.translation
-          });
-        }
+      for (const range of katakanaPlan.ranges) {
+        annotations.push({ ...range, feature: "katakana" });
       }
       annotations.sort((left, right) => left.start - right.start || left.end - right.end);
       this.#renderRecord(record, annotations);
     }
-    #queueKatakana(record, matches) {
-      let queued = false;
-      for (const match of matches) {
-        let cached = this.translationCache.get(match.text);
-        if (!cached) {
-          cached = { status: "pending", waiters: /* @__PURE__ */ new Set() };
-          this.translationCache.set(match.text, cached);
-          this.translationQueue.add(match.text);
-          queued = true;
-        }
-        if (cached.status === "pending") {
-          cached.waiters.add(record);
-        }
-      }
-      if (queued) {
-        this.#scheduleTranslationFlush();
-      }
-    }
-    #scheduleTranslationFlush() {
-      if (this.translationFlushScheduled || this.translationActiveGeneration === this.katakanaGeneration) {
+    #reprocessAll() {
+      if (this.hidden) {
         return;
       }
-      this.translationFlushScheduled = true;
-      queueMicrotask(() => {
-        this.translationFlushScheduled = false;
-        void this.#flushTranslations();
-      });
-    }
-    async #flushTranslations() {
-      if (this.translationActiveGeneration === this.katakanaGeneration || !this.katakanaTranslator || this.translationQueue.size === 0) {
-        return;
-      }
-      const phrases = [...this.translationQueue];
-      this.translationQueue.clear();
-      const generation = this.katakanaGeneration;
-      const translator = this.katakanaTranslator;
-      const signal = this.katakanaAbortController?.signal;
-      this.translationActiveGeneration = generation;
-      let translations = /* @__PURE__ */ new Map();
-      try {
-        translations = await translator(phrases, { signal });
-      } catch {
-        translations = /* @__PURE__ */ new Map();
-      } finally {
-        if (this.translationActiveGeneration === generation) {
-          this.translationActiveGeneration = null;
-        }
-      }
-      if (generation !== this.katakanaGeneration || translator !== this.katakanaTranslator || signal?.aborted) {
-        if (this.translationQueue.size) {
-          this.#scheduleTranslationFlush();
-        }
-        return;
-      }
-      const affected = /* @__PURE__ */ new Set();
-      for (const phrase of phrases) {
-        const cached = this.translationCache.get(phrase);
-        if (!cached || cached.status !== "pending") {
-          continue;
-        }
-        for (const record of cached.waiters) {
-          affected.add(record);
-        }
-        const translation = translations instanceof Map ? translations.get(phrase) : void 0;
-        this.translationCache.set(phrase, translation ? { status: "success", translation } : { status: "failure" });
-      }
-      for (const record of affected) {
+      for (const record of [...this.records]) {
         this.#processRecord(record);
-      }
-      if (this.translationQueue.size) {
-        this.#scheduleTranslationFlush();
       }
     }
     #renderRecord(record, annotations) {
-      const planKey = JSON.stringify(annotations.map(({ start, end, feature, annotation, reading, romaji }) => [start, end, feature, annotation, reading, romaji]));
+      const planKey = JSON.stringify(annotations.map((range) => [
+        range.start,
+        range.end,
+        range.feature,
+        range.annotation,
+        range.reading,
+        range.romaji
+      ]));
       if (record.planKey === planKey) {
         return;
       }
       const parent = record.currentNodes[0]?.parentNode;
       if (!parent || record.currentNodes.some((node) => node.parentNode !== parent)) {
-        record.valid = false;
+        this.#discardRecord(record);
         return;
       }
       const fragment = this.document.createDocumentFragment();
@@ -3925,12 +4259,14 @@
       ruby.setAttribute("data-yomi-ruby-feature", range.feature);
       const base = this.document.createElement("span");
       base.className = "yomi-ruby-base";
-      base.textContent = recordText(range);
+      base.textContent = range.text;
       const rt = this.document.createElement("rt");
       rt.className = range.feature === "kanji" ? "yomi-ruby-rt" : "yomi-ruby-rt yomi-ruby-katakana-rt";
       if (range.feature === "kanji") {
-        ruby.setAttribute("data-yomi-ruby-kana", range.reading);
-        ruby.tabIndex = 0;
+        if (typeof range.reading === "string" && range.reading.length > 0) {
+          ruby.setAttribute("data-yomi-ruby-kana", range.reading);
+          ruby.tabIndex = 0;
+        }
         rt.textContent = range.romaji;
       } else {
         rt.textContent = range.annotation;
@@ -3950,6 +4286,11 @@
       }
     }
     #discardRecord(record) {
+      if (!this.records.has(record)) {
+        return;
+      }
+      this.kanjiRuntime?.forget(record);
+      this.katakanaRuntime?.forget(record);
       const parent = record.currentNodes[0]?.parentNode;
       if (parent && record.currentNodes.every((node) => node.parentNode === parent) && record.currentNodes.map(sourceText).join("") === record.originalText) {
         const text = this.document.createTextNode(record.originalText);
@@ -3961,11 +4302,32 @@
       for (const node of record.currentNodes) {
         this.nodeRecords.delete(node);
       }
-      for (const cached of this.translationCache.values()) {
-        cached.waiters?.delete(record);
-      }
       record.valid = false;
       this.records.delete(record);
+    }
+    #discardDetachedOwnership(root) {
+      const found = /* @__PURE__ */ new Set();
+      const stack = [root];
+      while (stack.length > 0) {
+        const node = stack.pop();
+        const record = this.nodeRecords.get(node);
+        if (record) {
+          found.add(record);
+        }
+        stack.push(...node.childNodes);
+      }
+      for (const record of found) {
+        if (record.currentNodes.some((node) => !node.isConnected)) {
+          this.#discardRecord(record);
+        }
+      }
+    }
+    #discardDetachedRecords() {
+      for (const record of [...this.records]) {
+        if (!this.#recordIsCurrent(record)) {
+          this.#discardRecord(record);
+        }
+      }
     }
     #recordIsCurrent(record) {
       if (!record.valid || record.currentNodes.length === 0) {
@@ -3976,42 +4338,28 @@
         parent && record.currentNodes.every((node) => node.isConnected && node.parentNode === parent) && record.currentNodes.map(sourceText).join("") === record.originalText
       );
     }
+    #cancelScheduledWork() {
+      if (this.flushTimer != null) {
+        this.clearTimer(this.flushTimer);
+        this.flushTimer = null;
+      }
+      if (this.scanHandle != null) {
+        if (this.requestIdleCallback && this.cancelIdleCallback) {
+          this.cancelIdleCallback(this.scanHandle);
+        } else {
+          this.clearTimer(this.scanHandle);
+        }
+        this.scanHandle = null;
+      }
+    }
   };
-  function annotationRanges(text, analyzeText) {
-    let segments;
-    try {
-      segments = analyzeText(text);
-    } catch {
-      return [];
+  function assertRuntime(runtime, label) {
+    if (!runtime || typeof runtime.plan !== "function" || typeof runtime.forget !== "function" || typeof runtime.pause !== "function" || typeof runtime.resume !== "function") {
+      throw new TypeError(`${label} annotation requires a runtime interface.`);
     }
-    if (!Array.isArray(segments)) {
-      return [];
-    }
-    const ranges = [];
-    let cursor = 0;
-    for (const segment of segments) {
-      const surface = segment?.type === "annotation" ? segment.surface : segment?.text;
-      if (typeof surface !== "string" || text.slice(cursor, cursor + surface.length) !== surface) {
-        return [];
-      }
-      if (segment.type === "annotation") {
-        ranges.push({
-          start: cursor,
-          end: cursor + surface.length,
-          text: surface,
-          reading: segment.reading,
-          romaji: segment.romaji
-        });
-      }
-      cursor += surface.length;
-    }
-    return cursor === text.length ? ranges : [];
   }
   function overlaps(left, right) {
     return left.start < right.end && right.start < left.end;
-  }
-  function recordText(range) {
-    return range.text;
   }
   function sourceText(node) {
     if (node.nodeType === 3) {
@@ -4030,6 +4378,8 @@
   });
   var LOCALE_SETTING_KEY = "yomi-ruby:locale";
   var SUPPORTED_LOCALES = Object.freeze(["en", "zh"]);
+  var KANJI_ROMAJI_MODE_SETTING_KEY = "yomi-ruby:kanji-romaji-mode";
+  var SUPPORTED_KANJI_ROMAJI_MODES = Object.freeze(["bing", "google", "local"]);
   var TRANSLATION_PROVIDER_SETTING_KEY = "yomi-ruby:translation-provider";
   var SUPPORTED_TRANSLATION_PROVIDERS = Object.freeze(["bing", "google"]);
   function isSupportedLocale(value) {
@@ -4037,6 +4387,9 @@
   }
   function isSupportedTranslationProvider(value) {
     return SUPPORTED_TRANSLATION_PROVIDERS.includes(value);
+  }
+  function isSupportedKanjiRomajiMode(value) {
+    return SUPPORTED_KANJI_ROMAJI_MODES.includes(value);
   }
   function originSettingKey(feature, origin) {
     const prefix = SETTING_PREFIXES[feature];
@@ -4068,6 +4421,60 @@
       throw new TypeError(`Unsupported YomiRuby translation provider: ${provider}`);
     }
     await gmSetValue(TRANSLATION_PROVIDER_SETTING_KEY, provider);
+  }
+  async function getStoredKanjiRomajiMode(gmGetValue) {
+    return gmGetValue(KANJI_ROMAJI_MODE_SETTING_KEY, null);
+  }
+  async function setStoredKanjiRomajiMode(gmSetValue, mode) {
+    if (!isSupportedKanjiRomajiMode(mode)) {
+      throw new TypeError(`Unsupported YomiRuby kanji romaji mode: ${mode}`);
+    }
+    await gmSetValue(KANJI_ROMAJI_MODE_SETTING_KEY, mode);
+  }
+  async function initializeKanjiRomajiMode({
+    getValue,
+    setValue,
+    primaryLanguage
+  }) {
+    let storedMode;
+    let storedLocale;
+    let storedTranslationProvider;
+    try {
+      [storedMode, storedLocale, storedTranslationProvider] = await Promise.all([
+        getStoredKanjiRomajiMode(getValue),
+        getStoredLocale(getValue),
+        getStoredTranslationProvider(getValue)
+      ]);
+    } catch (readError) {
+      return {
+        mode: "local",
+        readError,
+        persistenceError: null
+      };
+    }
+    if (isSupportedKanjiRomajiMode(storedMode)) {
+      return {
+        mode: storedMode,
+        readError: null,
+        persistenceError: null
+      };
+    }
+    const hasLegacySettings = storedMode != null || storedLocale != null || storedTranslationProvider != null;
+    const mode = hasLegacySettings ? "local" : typeof primaryLanguage === "string" && primaryLanguage.toLowerCase().startsWith("zh") ? "bing" : "google";
+    try {
+      await setStoredKanjiRomajiMode(setValue, mode);
+      return {
+        mode,
+        readError: null,
+        persistenceError: null
+      };
+    } catch (persistenceError) {
+      return {
+        mode,
+        readError: null,
+        persistenceError
+      };
+    }
   }
   async function initializeTranslationProvider({ getValue, setValue, locale }) {
     const defaultProvider = locale === "zh" ? "bing" : "google";
@@ -4111,17 +4518,27 @@
     unregisterMenuCommand,
     getValue,
     setValue,
+    addValueChangeListener = null,
+    removeValueChangeListener = null,
     localizer: localizer2,
     localePersistenceError = null,
+    kanjiRomajiMode,
+    kanjiRomajiModeReadError = null,
+    kanjiRomajiModePersistenceError = null,
     translationProvider,
     translationProviderReadError = null,
     translationProviderPersistenceError = null,
-    translationProviderFactories,
     kanji,
     katakana,
     showStatus
   }) {
-    const persistence = createPersistenceQueue();
+    const persistence = {
+      kanjiFeature: createPersistenceQueue(),
+      katakanaFeature: createPersistenceQueue(),
+      kanjiMode: createPersistenceQueue(),
+      provider: createPersistenceQueue(),
+      locale: createPersistenceQueue()
+    };
     const definitions = [
       {
         feature: "kanji",
@@ -4151,7 +4568,7 @@
         origin,
         registerMenuCommand,
         unregisterMenuCommand,
-        persist: (nextEnabled) => persistence.enqueue(() => setFeatureEnabledForOrigin(
+        persist: (nextEnabled) => persistence[`${definition.feature}Feature`].enqueue(() => setFeatureEnabledForOrigin(
           setValue,
           definition.feature,
           nextEnabled,
@@ -4163,28 +4580,67 @@
       }));
     }
     let languageMenuId = null;
+    let kanjiModeMenuId = null;
+    let kanjiModeOperation = 0;
+    let currentKanjiMode = kanjiRomajiMode;
+    let persistedKanjiMode = kanjiRomajiMode;
+    let desiredKanjiMode = kanjiRomajiMode;
+    const registerKanjiMode = () => {
+      if (kanjiModeMenuId != null) {
+        unregisterMenuCommand(kanjiModeMenuId);
+      }
+      const nextMode = nextKanjiMode(currentKanjiMode, localizer2.getLocale());
+      kanjiModeMenuId = registerMenuCommand(
+        localizer2.t("menu.kanjiRomajiMode", { mode: currentKanjiMode, nextMode }),
+        async () => {
+          const requestedMode = nextKanjiMode(desiredKanjiMode, localizer2.getLocale());
+          desiredKanjiMode = requestedMode;
+          const requestOperation = ++kanjiModeOperation;
+          try {
+            await persistence.kanjiMode.enqueue(() => setStoredKanjiRomajiMode(setValue, requestedMode));
+          } catch (error) {
+            if (requestOperation === kanjiModeOperation) {
+              desiredKanjiMode = persistedKanjiMode;
+              showStatus(localizer2.t("error.kanjiRomajiModePersistence", {
+                error: errorMessage(error)
+              }), {
+                duration: 9e3,
+                error: true
+              });
+            }
+            return;
+          }
+          persistedKanjiMode = requestedMode;
+          if (requestOperation === kanjiModeOperation) {
+            currentKanjiMode = requestedMode;
+            desiredKanjiMode = requestedMode;
+            refreshMenus();
+            await kanji.setMode(requestedMode);
+          }
+        }
+      );
+    };
     let providerMenuId = null;
     let providerOperation = 0;
     let currentProvider = translationProvider;
     let persistedProvider = translationProvider;
+    let desiredProvider = translationProvider;
     const registerProvider = () => {
       if (providerMenuId != null) {
         unregisterMenuCommand(providerMenuId);
       }
       const nextProvider = currentProvider === "bing" ? "google" : "bing";
       providerMenuId = registerMenuCommand(
-        localizer2.t("menu.translationProvider", { nextProvider }),
+        localizer2.t("menu.translationProvider", { provider: currentProvider, nextProvider }),
         async () => {
-          const requestedProvider = nextProvider;
+          const requestedProvider = desiredProvider === "bing" ? "google" : "bing";
+          desiredProvider = requestedProvider;
           const requestOperation = ++providerOperation;
-          currentProvider = requestedProvider;
-          refreshMenus();
           try {
-            await persistence.enqueue(() => setStoredTranslationProvider(setValue, requestedProvider));
+            await persistence.provider.enqueue(() => setStoredTranslationProvider(setValue, requestedProvider));
           } catch (error) {
             if (requestOperation === providerOperation) {
-              currentProvider = persistedProvider;
-              refreshMenus();
+              desiredProvider = persistedProvider;
               showStatus(localizer2.t("error.translationProviderPersistence", {
                 error: errorMessage(error)
               }), {
@@ -4195,40 +4651,31 @@
             return;
           }
           persistedProvider = requestedProvider;
-          if (requestOperation === providerOperation && currentProvider === requestedProvider) {
-            let nextTranslator;
-            try {
-              nextTranslator = translationProviderFactories[requestedProvider]();
-            } catch (error) {
-              katakana.disable();
-              showStatus(localizer2.t("error.katakanaStartup", { error: errorMessage(error) }), {
-                duration: 9e3,
-                error: true
-              });
-              return;
-            }
-            await katakana.setTranslator(nextTranslator);
+          if (requestOperation === providerOperation) {
+            currentProvider = requestedProvider;
+            desiredProvider = requestedProvider;
+            refreshMenus();
+            await katakana.setProvider(requestedProvider);
           }
         }
       );
     };
     let languageOperation = 0;
     let persistedLocale = localizer2.getLocale();
+    let desiredLocale = persistedLocale;
     const registerLanguage = () => {
       if (languageMenuId != null) {
         unregisterMenuCommand(languageMenuId);
       }
       languageMenuId = registerMenuCommand(localizer2.t("menu.language"), async () => {
         const requestOperation = ++languageOperation;
-        const nextLocale = localizer2.getLocale() === "zh" ? "en" : "zh";
-        localizer2.setLocale(nextLocale);
-        refreshMenus();
+        const nextLocale = desiredLocale === "zh" ? "en" : "zh";
+        desiredLocale = nextLocale;
         try {
-          await persistence.enqueue(() => setStoredLocale(setValue, nextLocale));
+          await persistence.locale.enqueue(() => setStoredLocale(setValue, nextLocale));
         } catch (error) {
           if (requestOperation === languageOperation) {
-            localizer2.setLocale(persistedLocale);
-            refreshMenus();
+            desiredLocale = persistedLocale;
             showStatus(localizer2.t("error.localePersistence", { error: errorMessage(error) }), {
               duration: 9e3,
               error: true
@@ -4237,12 +4684,17 @@
           return;
         }
         persistedLocale = nextLocale;
+        if (requestOperation === languageOperation) {
+          localizer2.setLocale(nextLocale);
+          desiredLocale = nextLocale;
+          refreshMenus();
+        }
       });
     };
     refreshMenus = () => {
-      for (const control of controls) {
-        control.register();
-      }
+      controls[0].register();
+      registerKanjiMode();
+      controls[1].register();
       registerProvider();
       registerLanguage();
     };
@@ -4271,6 +4723,22 @@
         error: true
       });
     }
+    if (kanjiRomajiModePersistenceError) {
+      showStatus(localizer2.t("error.kanjiRomajiModePersistence", {
+        error: errorMessage(kanjiRomajiModePersistenceError)
+      }), {
+        duration: 9e3,
+        error: true
+      });
+    }
+    if (kanjiRomajiModeReadError) {
+      showStatus(localizer2.t("error.kanjiRomajiModeRead", {
+        error: errorMessage(kanjiRomajiModeReadError)
+      }), {
+        duration: 9e3,
+        error: true
+      });
+    }
     for (const { feature, error } of featureReadErrors) {
       showStatus(localizer2.t(`error.${feature}ReadPersistence`, {
         error: errorMessage(error)
@@ -4282,6 +4750,51 @@
     for (const control of controls) {
       control.startIfEnabled();
     }
+    const listenerIds = [];
+    if (typeof addValueChangeListener === "function") {
+      listenerIds.push(addValueChangeListener(
+        KANJI_ROMAJI_MODE_SETTING_KEY,
+        async (_key, _oldValue, nextMode, remote) => {
+          if (remote !== true || !isSupportedKanjiRomajiMode(nextMode)) {
+            return;
+          }
+          kanjiModeOperation += 1;
+          currentKanjiMode = nextMode;
+          persistedKanjiMode = nextMode;
+          desiredKanjiMode = nextMode;
+          refreshMenus();
+          await kanji.setMode(nextMode);
+        }
+      ));
+      listenerIds.push(addValueChangeListener(
+        TRANSLATION_PROVIDER_SETTING_KEY,
+        async (_key, _oldValue, nextProvider, remote) => {
+          if (remote !== true || !isSupportedTranslationProvider(nextProvider)) {
+            return;
+          }
+          providerOperation += 1;
+          currentProvider = nextProvider;
+          persistedProvider = nextProvider;
+          desiredProvider = nextProvider;
+          refreshMenus();
+          await katakana.setProvider(nextProvider);
+        }
+      ));
+    }
+    return {
+      dispose() {
+        if (typeof removeValueChangeListener === "function") {
+          for (const listenerId of listenerIds) {
+            removeValueChangeListener(listenerId);
+          }
+        }
+      }
+    };
+  }
+  function nextKanjiMode(mode, locale) {
+    const order = locale === "zh" ? ["bing", "local", "google"] : ["google", "local", "bing"];
+    const index = order.indexOf(mode);
+    return order[(index < 0 ? 0 : index + 1) % order.length];
   }
   function errorMessage(error) {
     return error instanceof Error ? error.message : String(error);
@@ -4313,6 +4826,7 @@
       throw new TypeError(`The ${feature} feature requires enable and disable functions.`);
     }
     let enabled = initialEnabled;
+    let desiredEnabled = initialEnabled;
     let menuId = null;
     let operation = 0;
     const register = () => {
@@ -4320,20 +4834,14 @@
         unregisterMenuCommand(menuId);
       }
       menuId = registerMenuCommand(localizer2.t(`menu.${enabled ? "disable" : "enable"}${menuKey}`), async () => {
-        const requestedEnabled = !enabled;
+        const requestedEnabled = !desiredEnabled;
+        desiredEnabled = requestedEnabled;
         const requestOperation = ++operation;
-        enabled = requestedEnabled;
-        refreshMenus();
-        if (!requestedEnabled) {
-          session.disable();
-        }
         try {
           await persist(requestedEnabled);
         } catch (error) {
           if (requestOperation === operation) {
-            enabled = false;
-            refreshMenus();
-            session.disable();
+            desiredEnabled = enabled;
             showStatus(localizer2.t(
               `error.${feature}${requestedEnabled ? "Enable" : "Disable"}Persistence`,
               { error: errorMessage(error) }
@@ -4344,8 +4852,15 @@
           }
           return;
         }
-        if (requestOperation === operation && enabled === requestedEnabled && requestedEnabled) {
-          await session.enable();
+        if (requestOperation === operation) {
+          enabled = requestedEnabled;
+          desiredEnabled = requestedEnabled;
+          refreshMenus();
+          if (requestedEnabled) {
+            await session.enable();
+          } else {
+            session.disable();
+          }
         }
       });
     };
@@ -4364,13 +4879,16 @@
     en: Object.freeze({
       "menu.enableKanji": "Enable Kanji Romaji on this site",
       "menu.disableKanji": "Disable Kanji Romaji on this site",
+      "menu.kanjiRomajiMode": ({ mode, nextMode }) => `Kanji Romaji: ${kanjiModeName(mode, "en")} (switch to ${kanjiModeName(nextMode, "en")})`,
       "menu.enableKatakana": "Enable Online Katakana English on this site",
       "menu.disableKatakana": "Disable Online Katakana English on this site",
-      "menu.translationProvider": ({ nextProvider }) => `Katakana Translator: Switch to ${providerName(nextProvider)}`,
+      "menu.translationProvider": ({ provider, nextProvider }) => `Katakana Translator: ${providerName(provider)} (switch to ${providerName(nextProvider)})`,
       "menu.language": "语言 / Language: 切换到简体中文",
       "error.localePersistence": ({ error }) => `Could not save the language setting: ${error}`,
       "error.translationProviderPersistence": ({ error }) => `Could not save the translation provider: ${error}. The previous provider remains active.`,
       "error.translationProviderRead": ({ error }) => `Could not read the translation provider setting. This page is using the locale-derived default: ${error}`,
+      "error.kanjiRomajiModePersistence": ({ error }) => `Could not save the Kanji Romaji mode: ${error}. The previous mode remains active.`,
+      "error.kanjiRomajiModeRead": ({ error }) => `Could not read the Kanji Romaji mode. This page is using Local Dictionary: ${error}`,
       "error.kanjiEnablePersistence": ({ error }) => `Could not save the Kanji Romaji setting: ${error}. The feature remains disabled.`,
       "error.kanjiDisablePersistence": ({ error }) => `Could not save the Kanji Romaji setting: ${error}. This page is disabled, but the feature may start again after reload.`,
       "error.katakanaEnablePersistence": ({ error }) => `Could not save the Online Katakana English setting: ${error}. The feature remains disabled.`,
@@ -4383,13 +4901,16 @@
     zh: Object.freeze({
       "menu.enableKanji": "开启本网站汉字罗马音",
       "menu.disableKanji": "关闭本网站汉字罗马音",
+      "menu.kanjiRomajiMode": ({ mode, nextMode }) => `汉字罗马音模式：${kanjiModeName(mode, "zh")}（切换到${kanjiModeName(nextMode, "zh")}）`,
       "menu.enableKatakana": "开启本网站联网片假名英文",
       "menu.disableKatakana": "关闭本网站联网片假名英文",
-      "menu.translationProvider": ({ nextProvider }) => `片假名翻译服务：切换到 ${providerName(nextProvider)}`,
+      "menu.translationProvider": ({ provider, nextProvider }) => `片假名翻译服务：${providerName(provider)}（切换到 ${providerName(nextProvider)}）`,
       "menu.language": "语言 / Language: Switch to English",
       "error.localePersistence": ({ error }) => `无法保存语言设置：${error}`,
       "error.translationProviderPersistence": ({ error }) => `无法保存片假名翻译服务设置：${error}。继续使用原服务。`,
       "error.translationProviderRead": ({ error }) => `无法读取片假名翻译服务设置，本页使用语言对应的默认服务：${error}`,
+      "error.kanjiRomajiModePersistence": ({ error }) => `无法保存汉字罗马音模式：${error}。继续使用原模式。`,
+      "error.kanjiRomajiModeRead": ({ error }) => `无法读取汉字罗马音模式，本页使用本地字典：${error}`,
       "error.kanjiEnablePersistence": ({ error }) => `无法保存本网站汉字罗马音设置：${error}。功能保持关闭。`,
       "error.kanjiDisablePersistence": ({ error }) => `无法保存本网站汉字罗马音设置：${error}。本页已关闭，但刷新后可能再次启用。`,
       "error.katakanaEnablePersistence": ({ error }) => `无法保存本网站联网片假名英文设置：${error}。功能保持关闭。`,
@@ -4402,6 +4923,15 @@
   });
   function providerName(provider) {
     return provider === "bing" ? "Bing" : "Google";
+  }
+  function kanjiModeName(mode, locale) {
+    if (mode === "bing") {
+      return "Bing";
+    }
+    if (mode === "local") {
+      return locale === "zh" ? "本地字典" : "Local Dictionary";
+    }
+    return "Google";
   }
   function createLocalizer(initialLocale = "en", messages = MESSAGES) {
     let locale = isSupportedLocale(initialLocale) ? initialLocale : "en";
@@ -4447,7 +4977,7 @@
     maxEncodedUrlLength = 1800,
     minimumIntervalMs = 250,
     requestTimeoutMs = 8e3,
-    sleep = wait2
+    sleep = wait3
   }) {
     if (typeof gmRequest !== "function") {
       throw new TypeError("A GM_xmlhttpRequest adapter is required for katakana translation.");
@@ -4459,7 +4989,7 @@
           return /* @__PURE__ */ new Map();
         }
         const translations = /* @__PURE__ */ new Map();
-        const batches = buildBatches(uniquePhrases, {
+        const batches = buildBatches2(uniquePhrases, {
           maxPhrasesPerRequest,
           maxEncodedUrlLength
         });
@@ -4472,7 +5002,7 @@
             signal,
             timeout: requestTimeoutMs
           });
-          for (const [original, translated] of parseTranslations(responseText, batch)) {
+          for (const [original, translated] of parseTranslations2(responseText, batch)) {
             translations.set(original, translated);
           }
         }
@@ -4480,7 +5010,7 @@
       }
     };
   }
-  function buildBatches(phrases, { maxPhrasesPerRequest, maxEncodedUrlLength }) {
+  function buildBatches2(phrases, { maxPhrasesPerRequest, maxEncodedUrlLength }) {
     if (!Number.isInteger(maxPhrasesPerRequest) || maxPhrasesPerRequest < 1) {
       throw new TypeError("maxPhrasesPerRequest must be a positive integer.");
     }
@@ -4517,7 +5047,7 @@
   function requestTranslation(gmRequest, url, { signal, timeout }) {
     return new Promise((resolve, reject) => {
       if (signal?.aborted) {
-        reject(abortError2());
+        reject(abortError3());
         return;
       }
       let settled = false;
@@ -4532,7 +5062,7 @@
       };
       const onAbort = () => {
         handle?.abort?.();
-        finish(reject, abortError2());
+        finish(reject, abortError3());
       };
       signal?.addEventListener("abort", onAbort, { once: true });
       handle = gmRequest({
@@ -4554,12 +5084,12 @@
           finish(reject, new Error("Google Translate request timed out."));
         },
         onabort() {
-          finish(reject, abortError2());
+          finish(reject, abortError3());
         }
       });
     });
   }
-  function parseTranslations(responseText, requestedPhrases) {
+  function parseTranslations2(responseText, requestedPhrases) {
     const payload = JSON.parse(responseText);
     if (!Array.isArray(payload?.[0])) {
       return /* @__PURE__ */ new Map();
@@ -4586,20 +5116,20 @@
     }
     return translations;
   }
-  function abortError2() {
+  function abortError3() {
     return new DOMException("The katakana translation was aborted.", "AbortError");
   }
-  function wait2(milliseconds, { signal } = {}) {
+  function wait3(milliseconds, { signal } = {}) {
     return new Promise((resolve, reject) => {
       if (signal?.aborted) {
-        reject(abortError2());
+        reject(abortError3());
         return;
       }
       const timer = setTimeout(finish, milliseconds);
       const onAbort = () => {
         clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
-        reject(abortError2());
+        reject(abortError3());
       };
       function finish() {
         signal?.removeEventListener("abort", onAbort);
@@ -4608,6 +5138,628 @@
       signal?.addEventListener("abort", onAbort, { once: true });
     });
   }
+
+  // src/google-kanji-romaji.js
+  var ENDPOINT2 = "https://translate.googleapis.com/translate_a/single";
+  var HAS_KANJI3 = new RegExp("\\p{Script=Han}", "u");
+  var SAFE_ROMAJI2 = /^[A-Za-zĀĪŪĒŌāīūēō'’-]+$/u;
+  function createGoogleKanjiRomajiClient({
+    gmRequest,
+    minimumIntervalMs = 250,
+    requestTimeoutMs = 8e3,
+    maxWordCharacters = 200,
+    sleep = wait4
+  }) {
+    if (typeof gmRequest !== "function") {
+      throw new TypeError("A GM_xmlhttpRequest adapter is required for Google kanji romaji.");
+    }
+    let operationQueue = Promise.resolve();
+    const romanizeWords = (words, { signal } = {}) => {
+      const operation = operationQueue.then(async () => {
+        throwIfAborted3(signal);
+        const uniqueWords = [...new Set(words.filter((word) => isEligibleWord2(
+          word,
+          maxWordCharacters
+        )))];
+        const readings = /* @__PURE__ */ new Map();
+        for (let index = 0; index < uniqueWords.length; index += 1) {
+          if (index > 0 && minimumIntervalMs > 0) {
+            await sleep(minimumIntervalMs, { signal });
+          }
+          const word = uniqueWords[index];
+          const url = buildUrl2(word);
+          const response = await request3(gmRequest, {
+            method: "GET",
+            url: url.href,
+            timeout: requestTimeoutMs,
+            anonymous: true,
+            redirect: "error"
+          }, { signal });
+          validateResponseUrl2(response.finalUrl ?? response.responseURL, url);
+          const romaji = parseGoogleKanjiRomaji(response.responseText, word);
+          if (romaji) {
+            readings.set(word, romaji);
+          }
+        }
+        return readings;
+      });
+      operationQueue = operation.catch(() => {
+      });
+      return operation;
+    };
+    return { romanizeWords };
+  }
+  function buildUrl2(word) {
+    const url = new URL(ENDPOINT2);
+    url.searchParams.set("client", "gtx");
+    url.searchParams.set("sl", "ja");
+    url.searchParams.set("tl", "en");
+    url.searchParams.append("dt", "t");
+    url.searchParams.append("dt", "rm");
+    url.searchParams.set("q", word);
+    return url;
+  }
+  function parseGoogleKanjiRomaji(responseText, word) {
+    let payload;
+    try {
+      payload = JSON.parse(responseText);
+    } catch {
+      return null;
+    }
+    if (!Array.isArray(payload) || !Array.isArray(payload[0]) || payload[2] !== "ja") {
+      return null;
+    }
+    const sourceFragments = [];
+    const romajiCandidates = [];
+    for (const item of payload[0]) {
+      if (!Array.isArray(item)) {
+        return null;
+      }
+      if (typeof item[0] === "string" && typeof item[1] === "string") {
+        sourceFragments.push(item[1]);
+      }
+      if (typeof item[3] === "string") {
+        romajiCandidates.push(item[3]);
+      }
+    }
+    if (sourceFragments.join("") !== word || romajiCandidates.length !== 1) {
+      return null;
+    }
+    const romaji = romajiCandidates[0];
+    return isSafeRomaji(romaji) ? romaji : null;
+  }
+  function isSafeRomaji(value) {
+    return typeof value === "string" && value.length > 0 && value.length <= 1e3 && value === value.trim() && SAFE_ROMAJI2.test(value);
+  }
+  function isEligibleWord2(word, maxWordCharacters) {
+    return typeof word === "string" && word.length > 0 && word.length <= maxWordCharacters && word === word.trim() && !/[\r\n\u0000-\u001f\u007f]/u.test(word) && HAS_KANJI3.test(word);
+  }
+  function validateResponseUrl2(value, requestedUrl) {
+    let finalUrl;
+    try {
+      finalUrl = new URL(value);
+    } catch {
+      throw new Error("Google kanji romaji returned no valid final URL.");
+    }
+    if (finalUrl.href !== requestedUrl.href) {
+      throw new Error("Google kanji romaji redirected away from the approved request URL.");
+    }
+  }
+  function request3(gmRequest, options, { signal }) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(abortError4());
+        return;
+      }
+      let settled = false;
+      let handle;
+      const finish = (callback, value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        signal?.removeEventListener("abort", onAbort);
+        callback(value);
+      };
+      const onAbort = () => {
+        handle?.abort?.();
+        finish(reject, abortError4());
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      handle = gmRequest({
+        ...options,
+        onload(response) {
+          if (!Number.isInteger(response?.status) || response.status < 200 || response.status >= 300) {
+            const status = Number.isInteger(response?.status) ? response.status : "unknown";
+            finish(reject, new Error(`Google kanji romaji returned HTTP ${status}.`));
+            return;
+          }
+          finish(resolve, response ?? {});
+        },
+        onerror(response) {
+          finish(reject, new Error(response?.statusText || "Google kanji romaji request failed."));
+        },
+        ontimeout() {
+          finish(reject, new Error("Google kanji romaji request timed out."));
+        },
+        onabort() {
+          finish(reject, abortError4());
+        }
+      });
+    });
+  }
+  function throwIfAborted3(signal) {
+    if (signal?.aborted) {
+      throw abortError4();
+    }
+  }
+  function abortError4() {
+    return new DOMException("Google kanji romaji was aborted.", "AbortError");
+  }
+  function wait4(milliseconds, { signal } = {}) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(abortError4());
+        return;
+      }
+      const timer = setTimeout(finish, milliseconds);
+      const onAbort = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        reject(abortError4());
+      };
+      function finish() {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  // src/online-kanji-analyzer.js
+  var HAS_KANJI4 = new RegExp("\\p{Script=Han}", "u");
+  function createOnlineKanjiAnalyzer({
+    romanizeWords,
+    Segmenter = globalThis.Intl?.Segmenter
+  }) {
+    if (typeof romanizeWords !== "function") {
+      throw new TypeError("An online kanji romanization function is required.");
+    }
+    if (typeof Segmenter !== "function") {
+      throw new TypeError("Local Intl.Segmenter support is required for online kanji romaji.");
+    }
+    const segmenter = new Segmenter("ja", { granularity: "word" });
+    const readingCache = /* @__PURE__ */ new Map();
+    const pendingReadings = /* @__PURE__ */ new Map();
+    return async function analyzeOnlineKanji(text, { signal } = {}) {
+      if (typeof text !== "string" || text.length === 0) {
+        return [];
+      }
+      const entries = [...segmenter.segment(text)];
+      if (!segmentsExactlyCoverText(text, entries)) {
+        return [{ type: "text", text }];
+      }
+      const candidates = [...new Set(entries.filter(({ segment, isWordLike }) => isWordLike === true && HAS_KANJI4.test(segment)).map(({ segment }) => segment))];
+      if (candidates.length === 0) {
+        return [{ type: "text", text }];
+      }
+      let readings;
+      try {
+        readings = await resolveReadings(candidates, signal);
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          throw error;
+        }
+        return [{ type: "text", text }];
+      }
+      if (!(readings instanceof Map)) {
+        return [{ type: "text", text }];
+      }
+      const result = [];
+      for (const { segment, isWordLike } of entries) {
+        const romaji = isWordLike === true && HAS_KANJI4.test(segment) ? readings.get(segment) : null;
+        if (typeof romaji === "string" && romaji.length > 0) {
+          result.push({ type: "annotation", surface: segment, romaji });
+        } else {
+          appendText2(result, segment);
+        }
+      }
+      return result;
+    };
+    async function resolveReadings(candidates, signal) {
+      const missing = candidates.filter((word) => !readingCache.has(word) && !pendingReadings.has(word));
+      if (missing.length > 0) {
+        const operation = Promise.resolve().then(() => romanizeWords(missing, { signal }));
+        for (const word of missing) {
+          let pending;
+          pending = operation.then(
+            (result) => result instanceof Map && typeof result.get(word) === "string" ? result.get(word) : null,
+            (error) => {
+              if (error?.name === "AbortError") {
+                throw error;
+              }
+              return null;
+            }
+          ).then((reading) => {
+            readingCache.set(word, reading);
+            return reading;
+          }).finally(() => {
+            if (pendingReadings.get(word) === pending) {
+              pendingReadings.delete(word);
+            }
+          });
+          pendingReadings.set(word, pending);
+        }
+      }
+      const readings = /* @__PURE__ */ new Map();
+      await Promise.all(candidates.map(async (word) => {
+        const reading = readingCache.has(word) ? readingCache.get(word) : await pendingReadings.get(word);
+        if (typeof reading === "string" && reading.length > 0) {
+          readings.set(word, reading);
+        }
+      }));
+      return readings;
+    }
+  }
+  function segmentsExactlyCoverText(text, entries) {
+    let cursor = 0;
+    for (const entry of entries) {
+      if (typeof entry?.segment !== "string" || !Number.isInteger(entry.index) || entry.index !== cursor || text.slice(cursor, cursor + entry.segment.length) !== entry.segment) {
+        return false;
+      }
+      cursor += entry.segment.length;
+    }
+    return cursor === text.length;
+  }
+  function appendText2(segments, text) {
+    if (!text) {
+      return;
+    }
+    const last = segments.at(-1);
+    if (last?.type === "text") {
+      last.text += text;
+    } else {
+      segments.push({ type: "text", text });
+    }
+  }
+
+  // src/kanji-runtime.js
+  var KanjiRuntime = class {
+    constructor({ mode, analyzerFactories, onPlanChanged = () => {
+    } }) {
+      if (!analyzerFactories || typeof analyzerFactories[mode] !== "function") {
+        throw new TypeError(`No kanji analyzer adapter is available for mode: ${mode}`);
+      }
+      this.mode = mode;
+      this.analyzerFactories = analyzerFactories;
+      this.onPlanChanged = onPlanChanged;
+      this.active = false;
+      this.paused = false;
+      this.analyzer = null;
+      this.generation = 0;
+      this.abortController = null;
+      this.cache = /* @__PURE__ */ new Map();
+      this.queue = [];
+      this.processing = false;
+    }
+    async enable() {
+      if (this.active) {
+        return;
+      }
+      const generation = ++this.generation;
+      const abortController = new AbortController();
+      this.abortController = abortController;
+      this.#clearCycle();
+      const analyzer = await this.analyzerFactories[this.mode]({ signal: abortController.signal });
+      if (generation !== this.generation || abortController.signal.aborted) {
+        return;
+      }
+      if (typeof analyzer !== "function") {
+        throw new TypeError("The kanji analyzer adapter must be a function.");
+      }
+      this.analyzer = analyzer;
+      this.active = true;
+    }
+    disable() {
+      this.generation += 1;
+      this.abortController?.abort();
+      this.abortController = null;
+      this.active = false;
+      this.analyzer = null;
+      this.#clearCycle();
+    }
+    async setMode(mode) {
+      if (typeof this.analyzerFactories[mode] !== "function") {
+        throw new TypeError(`No kanji analyzer adapter is available for mode: ${mode}`);
+      }
+      if (mode === this.mode) {
+        return;
+      }
+      const wasActive = this.active;
+      this.disable();
+      this.mode = mode;
+      if (wasActive) {
+        await this.enable();
+      }
+    }
+    pause() {
+      this.paused = true;
+    }
+    resume() {
+      this.paused = false;
+      this.#drain();
+    }
+    plan(record) {
+      const text = record?.text;
+      if (!this.active || typeof text !== "string" || text.length === 0) {
+        return emptyPlan("inactive");
+      }
+      let entry = this.cache.get(text);
+      if (!entry) {
+        entry = { status: "pending", ranges: [], waiters: /* @__PURE__ */ new Set() };
+        this.cache.set(text, entry);
+        this.queue.push(text);
+      }
+      if (entry.status === "pending") {
+        entry.waiters.add(record);
+      }
+      this.#drain();
+      return { status: entry.status, ranges: entry.ranges };
+    }
+    forget(record) {
+      for (const entry of this.cache.values()) {
+        entry.waiters?.delete(record);
+      }
+    }
+    stop() {
+      this.disable();
+    }
+    #drain() {
+      if (!this.active || this.paused || this.processing || this.queue.length === 0) {
+        return;
+      }
+      const text = this.queue.shift();
+      const entry = this.cache.get(text);
+      if (!entry || entry.status !== "pending") {
+        this.#drain();
+        return;
+      }
+      const generation = this.generation;
+      const analyzer = this.analyzer;
+      const signal = this.abortController?.signal;
+      let result;
+      try {
+        result = analyzer(text, { signal });
+      } catch {
+        this.#finish(text, entry, generation, []);
+        return;
+      }
+      if (!result || typeof result.then !== "function") {
+        this.#finish(text, entry, generation, annotationRanges(text, result));
+        return;
+      }
+      this.processing = true;
+      void Promise.resolve(result).then(
+        (segments) => this.#finish(text, entry, generation, annotationRanges(text, segments)),
+        () => this.#finish(text, entry, generation, [])
+      );
+    }
+    #finish(text, entry, generation, ranges) {
+      this.processing = false;
+      if (generation !== this.generation || !this.active || this.cache.get(text) !== entry || this.abortController?.signal.aborted) {
+        this.#drain();
+        return;
+      }
+      entry.status = ranges.length > 0 ? "success" : "failure";
+      entry.ranges = ranges;
+      const waiters = [...entry.waiters];
+      entry.waiters.clear();
+      for (const record of waiters) {
+        this.onPlanChanged(record);
+      }
+      this.#drain();
+    }
+    #clearCycle() {
+      this.cache.clear();
+      this.queue.length = 0;
+      this.processing = false;
+    }
+  };
+  function annotationRanges(text, segments) {
+    if (!Array.isArray(segments)) {
+      return [];
+    }
+    const ranges = [];
+    let cursor = 0;
+    for (const segment of segments) {
+      const surface = segment?.type === "annotation" ? segment.surface : segment?.text;
+      if (typeof surface !== "string" || text.slice(cursor, cursor + surface.length) !== surface) {
+        return [];
+      }
+      if (segment.type === "annotation" && typeof segment.romaji === "string" && segment.romaji.length > 0) {
+        ranges.push({
+          start: cursor,
+          end: cursor + surface.length,
+          text: surface,
+          reading: segment.reading,
+          romaji: segment.romaji
+        });
+      }
+      cursor += surface.length;
+    }
+    return cursor === text.length ? ranges : [];
+  }
+  function emptyPlan(status) {
+    return { status, ranges: [] };
+  }
+
+  // src/katakana-runtime.js
+  var KatakanaRuntime = class {
+    constructor({ provider, translatorFactories, onPlanChanged = () => {
+    } }) {
+      if (!translatorFactories || typeof translatorFactories[provider] !== "function") {
+        throw new TypeError(`No katakana translation adapter is available for provider: ${provider}`);
+      }
+      this.provider = provider;
+      this.translatorFactories = translatorFactories;
+      this.onPlanChanged = onPlanChanged;
+      this.active = false;
+      this.paused = false;
+      this.translator = null;
+      this.generation = 0;
+      this.abortController = null;
+      this.cache = /* @__PURE__ */ new Map();
+      this.queue = [];
+      this.flushScheduled = false;
+      this.processing = false;
+    }
+    async enable() {
+      if (this.active) {
+        return;
+      }
+      const generation = ++this.generation;
+      const abortController = new AbortController();
+      this.abortController = abortController;
+      this.#clearCycle();
+      const translator = await this.translatorFactories[this.provider]();
+      if (generation !== this.generation || abortController.signal.aborted) {
+        return;
+      }
+      if (typeof translator !== "function") {
+        throw new TypeError("The katakana translation adapter must be a function.");
+      }
+      this.translator = translator;
+      this.active = true;
+    }
+    disable() {
+      this.generation += 1;
+      this.abortController?.abort();
+      this.abortController = null;
+      this.active = false;
+      this.translator = null;
+      this.#clearCycle();
+    }
+    async setProvider(provider) {
+      if (typeof this.translatorFactories[provider] !== "function") {
+        throw new TypeError(`No katakana translation adapter is available for provider: ${provider}`);
+      }
+      if (provider === this.provider) {
+        return;
+      }
+      const wasActive = this.active;
+      this.disable();
+      this.provider = provider;
+      if (wasActive) {
+        await this.enable();
+      }
+    }
+    pause() {
+      this.paused = true;
+    }
+    resume() {
+      this.paused = false;
+      this.#scheduleFlush();
+    }
+    plan(record) {
+      const text = record?.text;
+      if (!this.active || typeof text !== "string" || text.length === 0) {
+        return { status: "inactive", ranges: [], reservations: [] };
+      }
+      const matches = findKatakanaMatches(text);
+      let added = false;
+      for (const match of matches) {
+        let entry = this.cache.get(match.text);
+        if (!entry) {
+          entry = { status: "pending", translation: null, waiters: /* @__PURE__ */ new Set() };
+          this.cache.set(match.text, entry);
+          this.queue.push(match.text);
+          added = true;
+        }
+        if (entry.status === "pending") {
+          entry.waiters.add(record);
+        }
+      }
+      if (added) {
+        this.#scheduleFlush();
+      }
+      const ranges = [];
+      const reservations = [];
+      for (const match of matches) {
+        const entry = this.cache.get(match.text);
+        if (entry?.status === "success") {
+          ranges.push({ ...match, annotation: entry.translation });
+          reservations.push(match);
+        } else if (entry?.status === "pending") {
+          reservations.push(match);
+        }
+      }
+      const status = reservations.some((match) => this.cache.get(match.text)?.status === "pending") ? "pending" : ranges.length > 0 ? "success" : matches.length > 0 ? "failure" : "success";
+      return { status, ranges, reservations };
+    }
+    forget(record) {
+      for (const entry of this.cache.values()) {
+        entry.waiters?.delete(record);
+      }
+    }
+    stop() {
+      this.disable();
+    }
+    #scheduleFlush() {
+      if (!this.active || this.paused || this.processing || this.flushScheduled || this.queue.length === 0) {
+        return;
+      }
+      this.flushScheduled = true;
+      queueMicrotask(() => {
+        this.flushScheduled = false;
+        this.#flush();
+      });
+    }
+    #flush() {
+      if (!this.active || this.paused || this.processing || this.queue.length === 0) {
+        return;
+      }
+      const phrases = this.queue.splice(0);
+      const generation = this.generation;
+      const translator = this.translator;
+      const signal = this.abortController?.signal;
+      this.processing = true;
+      void Promise.resolve().then(() => translator(phrases, { signal })).then(
+        (translations) => this.#finish(phrases, generation, translations),
+        () => this.#finish(phrases, generation, /* @__PURE__ */ new Map())
+      );
+    }
+    #finish(phrases, generation, translations) {
+      this.processing = false;
+      if (generation !== this.generation || !this.active || this.abortController?.signal.aborted) {
+        this.#scheduleFlush();
+        return;
+      }
+      const affected = /* @__PURE__ */ new Set();
+      for (const phrase of phrases) {
+        const entry = this.cache.get(phrase);
+        if (!entry || entry.status !== "pending") {
+          continue;
+        }
+        const translation = translations instanceof Map ? translations.get(phrase) : null;
+        entry.status = typeof translation === "string" && translation.length > 0 ? "success" : "failure";
+        entry.translation = entry.status === "success" ? translation : null;
+        for (const record of entry.waiters) {
+          affected.add(record);
+        }
+        entry.waiters.clear();
+      }
+      for (const record of affected) {
+        this.onPlanChanged(record);
+      }
+      this.#scheduleFlush();
+    }
+    #clearCycle() {
+      this.cache.clear();
+      this.queue.length = 0;
+      this.flushScheduled = false;
+      this.processing = false;
+    }
+  };
 
   // src/styles.js
   var STYLES = `
@@ -4670,72 +5822,91 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
   function createYomiRubySession({
     document: document2,
     coordinator: coordinator2,
-    loadTokenizer,
-    createAnalyzer: createAnalyzer2,
-    translatePhrases,
+    kanjiMode = "local",
+    kanjiAnalyzerFactories,
+    translationProvider = "google",
+    translationProviderFactories,
+    translatePhrases = null,
     installSessionStyles = installStyles,
     setTimer = globalThis.setTimeout,
     clearTimer = globalThis.clearTimeout,
     logger = globalThis.console,
     localizer: localizer2 = createLocalizer("en")
   }) {
-    if (!document2 || !coordinator2 || typeof loadTokenizer !== "function" || typeof createAnalyzer2 !== "function" || typeof translatePhrases !== "function") {
-      throw new TypeError("A document, coordinator, tokenizer path, and translation path are required.");
+    if (!document2 || !coordinator2 || !kanjiAnalyzerFactories) {
+      throw new TypeError("A document, coordinator, and kanji analyzer adapters are required.");
     }
+    const resolvedTranslationFactories = translationProviderFactories ?? (typeof translatePhrases === "function" ? { [translationProvider]: () => translatePhrases } : null);
+    if (!resolvedTranslationFactories) {
+      throw new TypeError("Katakana translation adapters are required.");
+    }
+    const kanjiRuntime = new KanjiRuntime({
+      mode: kanjiMode,
+      analyzerFactories: kanjiAnalyzerFactories,
+      onPlanChanged: (record) => coordinator2.refresh(record)
+    });
+    const katakanaRuntime = new KatakanaRuntime({
+      provider: translationProvider,
+      translatorFactories: resolvedTranslationFactories,
+      onPlanChanged: (record) => coordinator2.refresh(record)
+    });
     let kanjiActive = false;
-    let kanjiLoading = false;
+    let kanjiDesired = false;
     let katakanaActive = false;
-    let kanjiGeneration = 0;
-    let kanjiAbortController = null;
-    let currentTranslatePhrases = translatePhrases;
     let removeStyles = null;
     let statusElement = null;
     let statusTimer = null;
     const kanji = {
       async enable() {
-        if (kanjiActive || kanjiLoading) {
+        if (kanjiActive) {
           return;
         }
-        kanjiLoading = true;
-        const generation = ++kanjiGeneration;
-        const abortController = new AbortController();
-        kanjiAbortController = abortController;
+        kanjiDesired = true;
         ensureStyles();
         try {
-          const tokenizer = await loadTokenizer({ signal: abortController.signal });
-          if (generation !== kanjiGeneration || abortController.signal.aborted) {
+          await kanjiRuntime.enable();
+          if (!kanjiDesired || !kanjiRuntime.active) {
             return;
           }
-          coordinator2.enableKanji(createAnalyzer2(tokenizer));
+          coordinator2.enableKanji(kanjiRuntime);
           kanjiActive = true;
         } catch (error) {
-          if (generation === kanjiGeneration && !abortController.signal.aborted) {
-            coordinator2.disableKanji();
-            showStatus(localizer2.t("error.kanjiStartup", { error: errorMessage2(error) }), {
-              duration: 9e3,
-              error: true
-            });
-            logger?.error?.("[YomiRuby] Refused to start kanji annotation", error);
-          }
+          kanjiDesired = false;
+          kanjiRuntime.disable();
+          coordinator2.disableKanji();
+          showStartupError("kanji", error);
         } finally {
-          if (generation === kanjiGeneration) {
-            kanjiLoading = false;
-            if (kanjiAbortController === abortController) {
-              kanjiAbortController = null;
-            }
-            removeStylesIfUnused();
-          }
+          removeStylesIfUnused();
         }
       },
       disable() {
-        kanjiGeneration += 1;
-        kanjiLoading = false;
-        kanjiAbortController?.abort();
-        kanjiAbortController = null;
+        kanjiDesired = false;
         kanjiActive = false;
         coordinator2.disableKanji();
+        kanjiRuntime.disable();
         removeStatus();
         removeStylesIfUnused();
+      },
+      async setMode(mode) {
+        if (!kanjiActive) {
+          await kanjiRuntime.setMode(mode);
+          return;
+        }
+        coordinator2.disableKanji();
+        kanjiActive = false;
+        try {
+          await kanjiRuntime.setMode(mode);
+          if (kanjiRuntime.active && kanjiDesired) {
+            coordinator2.enableKanji(kanjiRuntime);
+            kanjiActive = true;
+          }
+        } catch (error) {
+          kanjiDesired = false;
+          kanjiRuntime.disable();
+          showStartupError("kanji", error);
+        } finally {
+          removeStylesIfUnused();
+        }
       }
     };
     const katakana = {
@@ -4745,37 +5916,55 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
         }
         ensureStyles();
         try {
-          coordinator2.enableKatakana(currentTranslatePhrases);
+          await katakanaRuntime.enable();
+          if (!katakanaRuntime.active) {
+            return;
+          }
+          coordinator2.enableKatakana(katakanaRuntime);
           katakanaActive = true;
         } catch (error) {
-          katakanaActive = false;
+          katakanaRuntime.disable();
           coordinator2.disableKatakana();
-          showStatus(localizer2.t("error.katakanaStartup", { error: errorMessage2(error) }), {
-            duration: 9e3,
-            error: true
-          });
-          logger?.error?.("[YomiRuby] Refused to start katakana annotation", error);
+          showStartupError("katakana", error);
+        } finally {
+          removeStylesIfUnused();
         }
       },
       disable() {
         katakanaActive = false;
         coordinator2.disableKatakana();
+        katakanaRuntime.disable();
         removeStatus();
         removeStylesIfUnused();
       },
-      async setTranslator(nextTranslatePhrases) {
-        if (typeof nextTranslatePhrases !== "function") {
-          throw new TypeError("Katakana translator replacement requires a translation function.");
-        }
-        currentTranslatePhrases = nextTranslatePhrases;
+      async setProvider(provider) {
         if (!katakanaActive) {
+          await katakanaRuntime.setProvider(provider);
           return;
         }
-        katakanaActive = false;
         coordinator2.disableKatakana();
-        await katakana.enable();
+        katakanaActive = false;
+        try {
+          await katakanaRuntime.setProvider(provider);
+          if (katakanaRuntime.active) {
+            coordinator2.enableKatakana(katakanaRuntime);
+            katakanaActive = true;
+          }
+        } catch (error) {
+          katakanaRuntime.disable();
+          showStartupError("katakana", error);
+        } finally {
+          removeStylesIfUnused();
+        }
       }
     };
+    function showStartupError(feature, error) {
+      showStatus(localizer2.t(`error.${feature}Startup`, { error: errorMessage2(error) }), {
+        duration: 9e3,
+        error: true
+      });
+      logger?.error?.(`[YomiRuby] Refused to start ${feature} annotation`, error);
+    }
     function showStatus(message, { duration = 4e3, error = false } = {}) {
       removeStatus();
       ensureStyles();
@@ -4802,24 +5991,23 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
       removeStylesIfUnused();
     }
     function removeStylesIfUnused() {
-      if (!kanjiActive && !kanjiLoading && !katakanaActive && !statusElement) {
+      if (!kanjiActive && !kanjiDesired && !katakanaActive && !statusElement) {
         removeStyles?.();
         removeStyles = null;
       }
     }
     function stop() {
-      kanjiGeneration += 1;
-      kanjiAbortController?.abort();
-      kanjiAbortController = null;
+      kanjiDesired = false;
       kanjiActive = false;
-      kanjiLoading = false;
       katakanaActive = false;
+      kanjiRuntime.stop();
+      katakanaRuntime.stop();
       coordinator2.stop();
       removeStatus();
       removeStyles?.();
       removeStyles = null;
     }
-    return { kanji, katakana, showStatus, stop };
+    return { kanji, katakana, showStatus, stop, kanjiRuntime, katakanaRuntime };
   }
   function errorMessage2(error) {
     return error instanceof Error ? error.message : String(error);
@@ -4878,7 +6066,7 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
     if (!subtle) {
       throw new Error("Web Crypto SHA-256 is unavailable; refusing to load dictionary assets.");
     }
-    throwIfAborted2(signal);
+    throwIfAborted4(signal);
     const dictionaryEntries = await Promise.all(
       manifest.dictionary.map(async (asset) => [
         asset.name,
@@ -4887,16 +6075,16 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
     );
     const dictionaryFiles = new Map(dictionaryEntries);
     try {
-      throwIfAborted2(signal);
+      throwIfAborted4(signal);
       const tokenizer = buildStaticTokenizer(dictionaryFiles);
-      throwIfAborted2(signal);
+      throwIfAborted4(signal);
       return tokenizer;
     } finally {
       dictionaryFiles.clear();
     }
   }
   async function readAndVerifyResource(asset, getResourceUrl, gmRequest, subtle = globalThis.crypto?.subtle, signal) {
-    throwIfAborted2(signal);
+    throwIfAborted4(signal);
     validateAssetRecord(asset);
     if (!asset.resourceName || typeof asset.resourceName !== "string") {
       throw new Error(`Missing preloaded resource name for ${asset.name}`);
@@ -4910,12 +6098,12 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
     return verifyAssetBytes(asset, bytes, subtle, signal);
   }
   async function verifyAssetBytes(asset, bytes, subtle, signal) {
-    throwIfAborted2(signal);
+    throwIfAborted4(signal);
     if (bytes.byteLength !== asset.size) {
       throw new Error(`Size mismatch for ${asset.name}: expected ${asset.size}, received ${bytes.byteLength}`);
     }
     const digest = toHex(await subtle.digest("SHA-256", bytes));
-    throwIfAborted2(signal);
+    throwIfAborted4(signal);
     if (digest !== asset.sha256) {
       throw new Error(`SHA-256 mismatch for ${asset.name}: expected ${asset.sha256}, received ${digest}`);
     }
@@ -4992,7 +6180,7 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
       }
     });
   }
-  function throwIfAborted2(signal) {
+  function throwIfAborted4(signal) {
     if (signal?.aborted) {
       throw new Error("Asset loading aborted.");
     }
@@ -5006,10 +6194,20 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
   var localizer = createLocalizer("en");
   void bootstrap();
   async function bootstrap() {
+    const primaryLanguage = navigator.languages?.[0] ?? navigator.language;
+    const {
+      mode: kanjiRomajiMode,
+      readError: kanjiRomajiModeReadError,
+      persistenceError: kanjiRomajiModePersistenceError
+    } = await initializeKanjiRomajiMode({
+      getValue: GM_getValue,
+      setValue: GM_setValue,
+      primaryLanguage
+    });
     const { locale, persistenceError } = await initializeLocale({
       getValue: GM_getValue,
       setValue: GM_setValue,
-      primaryLanguage: navigator.languages?.[0] ?? navigator.language
+      primaryLanguage
     });
     localizer.setLocale(locale);
     const {
@@ -5029,17 +6227,31 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
         gmRequest: GM_xmlhttpRequest
       }).translatePhrases
     };
-    const session = createYomiRubySession({
-      document,
-      coordinator,
-      loadTokenizer: ({ signal }) => loadVerifiedKuromoji({
+    const kanjiAnalyzerFactories = {
+      local: async ({ signal }) => createAnalyzer(await loadVerifiedKuromoji({
         manifest: runtime_manifest_default,
         getResourceUrl: GM_getResourceURL,
         gmRequest: GM_xmlhttpRequest,
         signal
+      })),
+      google: async () => createOnlineKanjiAnalyzer({
+        romanizeWords: createGoogleKanjiRomajiClient({
+          gmRequest: GM_xmlhttpRequest
+        }).romanizeWords
       }),
-      createAnalyzer,
-      translatePhrases: translationProviderFactories[provider](),
+      bing: async () => createOnlineKanjiAnalyzer({
+        romanizeWords: createBingKanjiRomajiClient({
+          gmRequest: GM_xmlhttpRequest
+        }).romanizeWords
+      })
+    };
+    const session = createYomiRubySession({
+      document,
+      coordinator,
+      kanjiMode: kanjiRomajiMode,
+      kanjiAnalyzerFactories,
+      translationProvider: provider,
+      translationProviderFactories,
       localizer
     });
     await installYomiRubyControls({
@@ -5048,12 +6260,16 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
       unregisterMenuCommand: GM_unregisterMenuCommand,
       getValue: GM_getValue,
       setValue: GM_setValue,
+      addValueChangeListener: GM_addValueChangeListener,
+      removeValueChangeListener: GM_removeValueChangeListener,
       localizer,
       localePersistenceError: persistenceError,
+      kanjiRomajiMode,
+      kanjiRomajiModeReadError,
+      kanjiRomajiModePersistenceError,
       translationProvider: provider,
       translationProviderReadError,
       translationProviderPersistenceError,
-      translationProviderFactories,
       kanji: session.kanji,
       katakana: session.katakana,
       showStatus: session.showStatus
