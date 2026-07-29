@@ -44,6 +44,108 @@ test("initializes anonymously and requests one exact kanji word with ja-to-ja se
   assert.deepEqual(await romanizing, new Map([["食べる", "taberu"]]));
 });
 
+test("batches multiple eligible words into one newline-joined ja-to-ja request and maps by position", async () => {
+  const { requests, romanizing } = await initializedRomanization(["神奈川県", "大阪市", "東京都"]);
+  const data = new URLSearchParams(requests[1].data);
+  assert.equal(data.get("text"), "神奈川県\n大阪市\n東京都");
+  assert.equal(data.get("to"), "ja");
+  respond(requests[1], validBatch([
+    ["神奈川県", "Kanagawa-ken"],
+    ["大阪市", "Osakashi"],
+    ["東京都", "Toukyou-to"],
+  ]));
+
+  assert.deepEqual(await romanizing, new Map([
+    ["神奈川県", "Kanagawa-ken"],
+    ["大阪市", "Osakashi"],
+    ["東京都", "Toukyou-to"],
+  ]));
+  assert.equal(requests.length, 2);
+});
+
+test("deduplicates without normalization and keeps stable FIFO order in one batch", async () => {
+  const { requests, romanizing } = await initializedRomanization([
+    "東京", "大阪市", "東京", "神奈川県", "大阪市",
+  ]);
+  assert.equal(new URLSearchParams(requests[1].data).get("text"), "東京\n大阪市\n神奈川県");
+  respond(requests[1], validBatch([
+    ["東京", "Tokyo"],
+    ["大阪市", "Osakashi"],
+    ["神奈川県", "Kanagawa-ken"],
+  ]));
+
+  assert.deepEqual(await romanizing, new Map([
+    ["東京", "Tokyo"],
+    ["大阪市", "Osakashi"],
+    ["神奈川県", "Kanagawa-ken"],
+  ]));
+});
+
+test("splits into a second batch after 50 eligible words with a throttling interval", async () => {
+  const waits = [];
+  const words = Array.from({ length: 51 }, (_, index) => `第${index}話`);
+  const requests = [];
+  const client = createBingKanjiRomajiClient({
+    gmRequest(options) {
+      requests.push(options);
+      return { abort() {} };
+    },
+    DOMParser,
+    now: () => 0,
+    sleep(ms) {
+      waits.push(ms);
+      return Promise.resolve();
+    },
+  });
+  const romanizing = client.romanizeWords(words);
+  await initialize(requests);
+  const firstBatch = new URLSearchParams(requests[1].data).get("text").split("\n");
+  assert.equal(firstBatch.length, 50);
+  respond(requests[1], validBatch(firstBatch.map((word) => [word, "daii"])));
+  await waitFor(() => requests.length === 3);
+  const secondBatch = new URLSearchParams(requests[2].data).get("text").split("\n");
+  assert.equal(secondBatch.length, 1);
+  respond(requests[2], validBatch(secondBatch.map((word) => [word, "daii"])));
+
+  const readings = await romanizing;
+  assert.equal(readings.size, 51);
+  assert.deepEqual(waits, [250]);
+});
+
+test("discards the whole batch when line counts drift, never misattributing readings", async () => {
+  const { requests, romanizing } = await initializedRomanization(["神奈川県", "大阪市", "東京都"]);
+  respond(requests[1], validRomaji(
+    "神奈川県\n大阪市\n東京都",
+    "Kanagawa-ken\nOsakashi",
+  ));
+
+  assert.deepEqual(await romanizing, new Map());
+});
+
+test("discards the whole batch when an echoed source line does not match its input word", async () => {
+  const { requests, romanizing } = await initializedRomanization(["神奈川県", "大阪市", "東京都"]);
+  respond(requests[1], validRomaji(
+    "神奈川県\n大阪府\n東京都",
+    "Kanagawa-ken\nOsakafu\nToukyou-to",
+  ));
+
+  assert.deepEqual(await romanizing, new Map());
+});
+
+test("keeps aligned safe readings while skipping only an unsafe romaji line", async () => {
+  const { requests, romanizing } = await initializedRomanization(["神奈川県", "大阪市", "東京都"]);
+  respond(requests[1], validBatch([
+    ["神奈川県", "Kanagawa-ken"],
+    ["大阪市", "Osaka shi"],
+    ["東京都", "Toukyou-to"],
+  ]));
+
+  assert.deepEqual(await romanizing, new Map([
+    ["神奈川県", "Kanagawa-ken"],
+    ["東京都", "Toukyou-to"],
+  ]));
+});
+
 test("accepts a precise Japanese reading even when detectedLanguage reports zh-Hans", async () => {
   const { requests, romanizing } = await initializedRomanization("学校");
   respond(requests[1], validRomaji("学校", "gakkou", { language: "zh-Hans" }));
@@ -149,7 +251,7 @@ test("aborts initialization and rejects a late result", async () => {
   });
 });
 
-async function initializedRomanization(word) {
+async function initializedRomanization(words) {
   const requests = [];
   const client = createBingKanjiRomajiClient({
     gmRequest(options) {
@@ -159,7 +261,7 @@ async function initializedRomanization(word) {
     DOMParser,
     minimumIntervalMs: 0,
   });
-  const romanizing = client.romanizeWords([word]);
+  const romanizing = client.romanizeWords(Array.isArray(words) ? words : [words]);
   await initialize(requests);
   return { requests, romanizing };
 }
@@ -194,6 +296,14 @@ function validRomaji(
     },
     metadata,
   ]);
+}
+
+function validBatch(pairs, options = {}) {
+  return validRomaji(
+    pairs.map(([word]) => word).join("\n"),
+    pairs.map(([, romaji]) => romaji).join("\n"),
+    options,
+  );
 }
 
 function respond(request, responseText, { status = 200 } = {}) {

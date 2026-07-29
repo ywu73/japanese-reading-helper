@@ -6,6 +6,7 @@ const projectRoot = new URL("../", import.meta.url);
 const source = await readFile(new URL("dist/yomi-ruby.user.js", projectRoot), "utf8");
 const coordinatorSource = await readFile(new URL("src/coordinator.js", projectRoot), "utf8");
 const bingTranslationSource = await readFile(new URL("src/bing-translation.js", projectRoot), "utf8");
+const bingKanjiRomajiSource = await readFile(new URL("src/bing-kanji-romaji.js", projectRoot), "utf8");
 const kanjiRuntimeSource = await readFile(new URL("src/kanji-runtime.js", projectRoot), "utf8");
 const katakanaRuntimeSource = await readFile(new URL("src/katakana-runtime.js", projectRoot), "utf8");
 const manifest = JSON.parse(await readFile(new URL("vendor/manifest.json", projectRoot), "utf8"));
@@ -181,6 +182,17 @@ assert.match(bingTranslationSource, /requestTimeoutMs = 8000/u);
 assert.match(bingTranslationSource, /text: phrases\.join\("\\n"\)/u);
 assert.match(bingTranslationSource, /candidate\.text\.split\(\/\\r\?\\n\/u\)/u);
 assert.match(bingTranslationSource, /translatedLines\.length !== phrases\.length/u);
+assert.match(bingKanjiRomajiSource, /maxPhrasesPerRequest = 50/u);
+assert.match(bingKanjiRomajiSource, /maxEncodedTextLength = 1800/u);
+assert.match(bingKanjiRomajiSource, /minimumIntervalMs = 250/u);
+assert.match(bingKanjiRomajiSource, /requestTimeoutMs = 8000/u);
+assert.match(bingKanjiRomajiSource, /text: words\.join\("\\n"\)/u);
+assert.match(bingKanjiRomajiSource, /translation\.text\.split\(\/\\r\?\\n\/u\)/u);
+assert.match(bingKanjiRomajiSource, /metadata\.inputTransliteration\.split\(\/\\r\?\\n\/u\)/u);
+assert.match(
+  bingKanjiRomajiSource,
+  /echoedLines\.length !== words\.length \|\| romajiLines\.length !== words\.length/u,
+);
 assert.match(runtime, /response\.finalUrl \?\? response\.responseURL/u);
 assert.match(runtime, /anonymous: true/u);
 assert.doesNotMatch(runtime, /user-agent|User-Agent/u);
@@ -197,8 +209,9 @@ assert.match(runtime, /new Segmenter\("ja", \{ granularity: "word" \}\)/u);
 assert.match(runtime, /isWordLike === true && HAS_KANJI\d*\.test\(segment\)/u);
 assert.match(runtime, /url\.searchParams\.append\("dt", "rm"\)/u);
 assert.match(runtime, /sourceFragments\.join\(""\) !== word/u);
-assert.match(runtime, /new URLSearchParams\(\{\s*fromLang: "ja",\s*to: "ja",\s*text: word/su);
-assert.match(runtime, /echoed !== word \|\| translation\?\.to !== "ja"/u);
+assert.match(runtime, /new URLSearchParams\(\{\s*fromLang: "ja",\s*to: "ja",\s*text: words\.join\("\\n"\)/su);
+assert.match(runtime, /echoedLines\[index\]\.trim\(\) !== word/u);
+assert.match(runtime, /echoedLines\.length !== words\.length \|\| romajiLines\.length !== words\.length/u);
 assert.match(runtime, /metadata\.script !== "Latn"/u);
 assert.doesNotMatch(runtime, /baidu|azure|ShowCaptcha[^\n]*(?:retry|bypass)/iu);
 assert.doesNotMatch(coordinatorSource, /IntersectionObserver|translationCache|translationQueue|provider|romanize|translatePhrases/u);

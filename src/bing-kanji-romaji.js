@@ -10,7 +10,9 @@ export function createBingKanjiRomajiClient({
   DOMParser = globalThis.DOMParser,
   now = Date.now,
   sleep = wait,
-  minimumIntervalMs = 1000,
+  maxPhrasesPerRequest = 50,
+  maxEncodedTextLength = 1800,
+  minimumIntervalMs = 250,
   requestTimeoutMs = 8000,
   refreshSkewMs = 60_000,
   maxWordCharacters = 200,
@@ -21,12 +23,18 @@ export function createBingKanjiRomajiClient({
   if (typeof DOMParser !== "function") {
     throw new TypeError("A DOMParser is required for Bing translator initialization.");
   }
+  if (!Number.isInteger(maxPhrasesPerRequest) || maxPhrasesPerRequest < 1) {
+    throw new TypeError("maxPhrasesPerRequest must be a positive integer.");
+  }
+  if (!Number.isInteger(maxEncodedTextLength) || maxEncodedTextLength < 1) {
+    throw new TypeError("maxEncodedTextLength must be a positive integer.");
+  }
 
   let config = null;
   let configPromise = null;
   let operationQueue = Promise.resolve();
   let requestSequence = 0;
-  let lastRequestStartedAt = null;
+  let lastBatchStartedAt = null;
 
   const romanizeWords = (words, { signal } = {}) => {
     const operation = operationQueue.then(async () => {
@@ -36,9 +44,13 @@ export function createBingKanjiRomajiClient({
         maxWordCharacters,
       )))];
       const readings = new Map();
-      for (const word of uniqueWords) {
-        const romaji = await romanizeWord(word, signal);
-        if (romaji) {
+      const batches = buildBatches(uniqueWords, {
+        maxPhrasesPerRequest,
+        maxEncodedTextLength,
+      });
+      for (const batch of batches) {
+        const romanizedBatch = await romanizeBatch(batch, signal);
+        for (const [word, romaji] of romanizedBatch) {
           readings.set(word, romaji);
         }
       }
@@ -84,20 +96,20 @@ export function createBingKanjiRomajiClient({
   }
 
   async function waitForTrafficSlot(signal) {
-    if (lastRequestStartedAt == null || minimumIntervalMs <= 0) {
+    if (lastBatchStartedAt == null || minimumIntervalMs <= 0) {
       return;
     }
-    const remaining = minimumIntervalMs - (now() - lastRequestStartedAt);
+    const remaining = minimumIntervalMs - (now() - lastBatchStartedAt);
     if (remaining > 0) {
       await sleep(remaining, { signal });
     }
   }
 
-  async function romanizeWord(word, signal) {
+  async function romanizeBatch(words, signal) {
     let activeConfig = await getConfig(signal);
     await waitForTrafficSlot(signal);
     try {
-      return await requestWord(activeConfig, word, signal);
+      return await requestBatch(activeConfig, words, signal);
     } catch (error) {
       if (!(error instanceof HttpError) || error.status !== 401 || signal?.aborted) {
         throw error;
@@ -106,7 +118,7 @@ export function createBingKanjiRomajiClient({
       activeConfig = await getConfig(signal);
       await waitForTrafficSlot(signal);
       try {
-        return await requestWord(activeConfig, word, signal);
+        return await requestBatch(activeConfig, words, signal);
       } catch (retryError) {
         if (retryError instanceof HttpError && retryError.status === 401) {
           config = null;
@@ -116,9 +128,9 @@ export function createBingKanjiRomajiClient({
     }
   }
 
-  async function requestWord(activeConfig, word, signal) {
+  async function requestBatch(activeConfig, words, signal) {
     throwIfAborted(signal);
-    lastRequestStartedAt = now();
+    lastBatchStartedAt = now();
     const url = new URL("/ttranslatev3", activeConfig.origin);
     url.searchParams.set("isVertical", "1");
     url.searchParams.set("IG", activeConfig.ig);
@@ -129,7 +141,7 @@ export function createBingKanjiRomajiClient({
     const data = new URLSearchParams({
       fromLang: "ja",
       to: "ja",
-      text: word,
+      text: words.join("\n"),
       token: activeConfig.token,
       key: String(activeConfig.key),
       tryFetchingGenderDebiasedTranslations: "true",
@@ -147,54 +159,102 @@ export function createBingKanjiRomajiClient({
       redirect: "error",
     }, { signal, label: "Bing kanji romaji" });
     validateResponseUrl(response.finalUrl ?? response.responseURL, url);
-    return parseRomajiResponse(response.responseText, word);
+    return parseRomajiResponse(response.responseText, words);
   }
 
   return { romanizeWords };
 }
 
-function parseRomajiResponse(responseText, word) {
+function parseRomajiResponse(responseText, words) {
+  const empty = new Map();
   if (typeof responseText !== "string" || responseText.includes("ShowCaptcha")) {
-    return null;
+    return empty;
   }
   let payload;
   try {
     payload = JSON.parse(responseText);
   } catch {
-    return null;
+    return empty;
   }
   if (!Array.isArray(payload) || payload.length !== 2) {
-    return null;
+    return empty;
   }
   const result = payload[0];
   const metadata = payload[1];
   if (!Array.isArray(result?.translations) || result.translations.length !== 1) {
-    return null;
+    return empty;
   }
   const translation = result.translations[0];
-  const echoed = typeof translation?.text === "string" ? translation.text.trim() : "";
-  if (echoed !== word || translation?.to !== "ja") {
-    return null;
+  if (typeof translation?.text !== "string" || translation.to !== "ja") {
+    return empty;
   }
   if (metadata == null || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return null;
+    return empty;
   }
   const keys = Object.keys(metadata).sort();
   if (keys.length !== 2 || keys[0] !== "inputTransliteration" || keys[1] !== "script") {
-    return null;
+    return empty;
   }
-  const romaji = metadata.inputTransliteration;
-  if (
-    metadata.script !== "Latn"
-    || typeof romaji !== "string"
-    || romaji.length === 0
-    || romaji.length > MAX_ROMAJI_CHARACTERS
-    || romaji !== romaji.trim()
-    || !SAFE_ROMAJI.test(romaji)
-  ) {
-    return null;
+  if (metadata.script !== "Latn" || typeof metadata.inputTransliteration !== "string") {
+    return empty;
   }
-  return romaji;
+  const echoedLines = translation.text.split(/\r?\n/u);
+  const romajiLines = metadata.inputTransliteration.split(/\r?\n/u);
+  // The echoed source and the transliteration must both stay aligned with the
+  // exact input order; any line-count drift means we cannot trust positional
+  // mapping, so the whole batch is discarded rather than risk misattribution.
+  if (echoedLines.length !== words.length || romajiLines.length !== words.length) {
+    return empty;
+  }
+  const readings = new Map();
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    if (echoedLines[index].trim() !== word) {
+      return empty;
+    }
+    const romaji = romajiLines[index].trim();
+    if (isSafeRomaji(romaji)) {
+      readings.set(word, romaji);
+    }
+  }
+  return readings;
+}
+
+function isSafeRomaji(romaji) {
+  return typeof romaji === "string"
+    && romaji.length > 0
+    && romaji.length <= MAX_ROMAJI_CHARACTERS
+    && SAFE_ROMAJI.test(romaji);
+}
+
+function buildBatches(words, { maxPhrasesPerRequest, maxEncodedTextLength }) {
+  const batches = [];
+  let batch = [];
+  for (const word of words) {
+    if (encodedTextLength([word]) > maxEncodedTextLength) {
+      continue;
+    }
+    const candidate = [...batch, word];
+    if (
+      batch.length > 0
+      && (
+        candidate.length > maxPhrasesPerRequest
+        || encodedTextLength(candidate) > maxEncodedTextLength
+      )
+    ) {
+      batches.push(batch);
+      batch = [];
+    }
+    batch.push(word);
+  }
+  if (batch.length > 0) {
+    batches.push(batch);
+  }
+  return batches;
+}
+
+function encodedTextLength(words) {
+  return encodeURIComponent(words.join("\n")).length;
 }
 
 function validateTranslatorUrl(value) {
