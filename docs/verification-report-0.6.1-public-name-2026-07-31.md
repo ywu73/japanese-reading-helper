@@ -6,7 +6,9 @@ Version 0.6.1 is a metadata-only release candidate that changes the public
 userscript name to `日语网页汉字罗马音与片假名英译 ｜ YomiRuby`, keeps the same
 Simplified Chinese localized name, and adds the explicit English localized name
 `YomiRuby`. It does not change the annotation, persistence, DOM, privacy, or
-network runtime implemented by 0.6.0.
+network runtime implemented by 0.6.0. Greasy Fork requires the localized English
+name to have a paired `@description:en`, so that field repeats the canonical
+English description.
 
 The candidate was built on branch `codex/rename-public-script-title` from clean
 `main` commit `c4f5660bf7e632351b9e3a329e8dd13316584784`.
@@ -15,8 +17,8 @@ The candidate was built on branch `codex/rename-public-script-title` from clean
 
 - path: `dist/yomi-ruby.user.js`
 - version: `0.6.1`
-- size: `240133` bytes
-- SHA-256: `7662c98d675e51d8291f80b7a312723b9ac5793249c8075b4df87bce9b745b04`
+- size: `240261` bytes
+- SHA-256: `d3599f71fe471ca4c346fb47ad6e0241b5c92ae16566faccbe47b29b7e19e87f`
 
 Verified metadata:
 
@@ -25,6 +27,7 @@ Verified metadata:
 @name:zh-CN   日语网页汉字罗马音与片假名英译 ｜ YomiRuby
 @name:en      YomiRuby
 @version      0.6.1
+@description:en  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 ```
 
 ## Local verification
@@ -34,7 +37,7 @@ Verified metadata:
   and the build audit.
 - `npm run verify:vendor`: passed for all 12 pinned `kuromoji@0.1.2` dictionary
   assets by expected byte size and SHA-256.
-- `npm run verify:deterministic-build`: passed with byte-identical 240133-byte
+- `npm run verify:deterministic-build`: passed with byte-identical 240261-byte
   artifacts and the SHA-256 recorded above.
 
 ## Evidence boundary

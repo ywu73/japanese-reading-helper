@@ -41,6 +41,7 @@ const header = `// ==UserScript==
 // @namespace    yomi-ruby.local
 // @version      ${packageJson.version}
 // @description  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
+// @description:en  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:zh-CN  为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。
 // @homepageURL  https://github.com/ywu73/yomi-ruby
 // @supportURL   https://github.com/ywu73/yomi-ruby/issues

@@ -35,6 +35,7 @@ assert.match(metadata, /^\/\/ @name:en\s+YomiRuby$/mu);
 assert.match(metadata, /^\/\/ @namespace\s+yomi-ruby\.local$/mu);
 assert.match(metadata, /^\/\/ @version\s+0\.6\.1$/mu);
 assert.match(metadata, /^\/\/ @description\s+Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text\.$/mu);
+assert.match(metadata, /^\/\/ @description:en\s+Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text\.$/mu);
 assert.match(metadata, /^\/\/ @description:zh-CN\s+为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。$/mu);
 assert.match(metadata, /^\/\/ @homepageURL\s+https:\/\/github\.com\/ywu73\/yomi-ruby$/mu);
 assert.match(metadata, /^\/\/ @supportURL\s+https:\/\/github\.com\/ywu73\/yomi-ruby\/issues$/mu);
