@@ -1,10 +1,10 @@
-# YomiRuby
+# 日语网页汉字罗马音与片假名英译
 
 [English](README.md)
 
-YomiRuby 是一个隐私边界明确的 Tampermonkey 日语网页阅读辅助工具。它可以通过独立选择的本地、Google 或 Bing 模式，在含汉字词上方显示罗马音；也可以通过另行选择的联网服务，在匹配到的片假名词组上方显示尽力而为的英文注音。
+**日语网页汉字罗马音与片假名英译**（内部项目名：YomiRuby）是一个隐私边界明确的 Tampermonkey 日语网页阅读辅助工具。它可以通过独立选择的本地、Google 或 Bing 模式，在含汉字词上方显示罗马音；也可以通过另行选择的联网服务，在匹配到的片假名词组上方显示尽力而为的英文翻译。
 
-**0.5.0 当前只是经过本地验证的发布候选；桌面 Chrome + Tampermonkey 安装、扩展后台抓包、更新、真实网站和发布门槛尚未完成。**
+**0.6.0 当前只是经过本地验证的发布候选；桌面 Chrome + Tampermonkey 安装、扩展后台抓包、更新、真实网站和发布门槛尚未完成。**
 
 ## 功能
 
@@ -12,8 +12,8 @@ YomiRuby 是一个隐私边界明确的 Tampermonkey 日语网页阅读辅助工
 
 - 每个未配置的精确 origin 默认关闭。
 - 使用独立的全局 `google | bing | local` 模式。已有安装缺少该设置时迁移为本地模式，避免升级后静默披露汉字词。
-- 本地模式在页面内运行固定版本 `kuromoji@0.1.2`，并默认使用带长音符号的 modified Hepburn，例如 `kyō`、`Tōkyō`。0.5.0 过渡版仍预加载全部 12 个词典资源。
-- Google/Bing 模式使用本地 `Intl.Segmenter` 划分词边界，每次只发送一个完整、去重且含汉字的词，不发送完整句子、周围上下文、页面标题、页面 URL、origin 或浏览历史。
+- 本地模式在页面内运行固定版本 `kuromoji@0.1.2`，并默认使用带长音符号的 modified Hepburn，例如 `kyō`、`Tōkyō`。0.6.0 过渡版仍预加载全部 12 个词典资源。
+- Google/Bing 模式使用本地 `Intl.Segmenter` 划分词边界，只发送完整、去重且含汉字的词。Google 使用有界的 `🧩` 连接批次、严格位置校验和同服务精确逐词兜底；Bing 使用同时校验原文回显与罗马音对齐的有界换行批次。两者都不发送完整句子、周围上下文、页面标题、页面 URL、origin 或浏览历史。
 - 联网模式只接受严格归属于日语源文的罗马化/转写字段，不把普通英文翻译当作罗马音；失败后不切换到另一服务或本地模式。
 - 联网结果按服务返回值显示，属于实验性的尽力而为读音，不保证符合 modified Hepburn。
 
@@ -33,7 +33,7 @@ YomiRuby 是一个隐私边界明确的 Tampermonkey 日语网页阅读辅助工
 
 <https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js>
 
-在 0.5.0 的浏览器与发布门槛正式记录为完成之前，不应把该地址视为已经发布的稳定版本。首个公开版本的兼容目标只包括 **桌面 Google Chrome + Tampermonkey**；其他浏览器和用户脚本管理器尚未验证，不提供兼容承诺。
+在 0.6.0 的浏览器与发布门槛正式记录为完成之前，不应把该地址视为已经发布的稳定版本。首个公开版本的兼容目标只包括 **桌面 Google Chrome + Tampermonkey**；其他浏览器和用户脚本管理器尚未验证，不提供兼容承诺。
 
 YomiRuby 匹配普通 HTTP/HTTPS 页面，并使用 `@noframes`。全站匹配是为了让用户能在任意网站选择开启 YomiRuby，并不表示功能会在所有网站自动运行：**每个未配置的精确 origin 上，两项功能都默认关闭**。
 
@@ -61,8 +61,8 @@ YomiRuby 按“汉字、汉字模式、片假名、片假名翻译服务、语�
 |---|---|---|
 | GitHub Raw | 安装或自动更新用户脚本时 | 下载用户脚本产物；会产生普通服务器请求元数据。 |
 | unpkg | Tampermonkey 安装或更新固定资源时 | 下载 12 个按 URL、大小和 SHA-256 固定的 `kuromoji@0.1.2` 词典资源；请求不包含页面文字。 |
-| Google Translate | 只有当前精确 origin 已开启对应联网功能，且选择 Google 时 | 片假名功能通过 `q` 发送有界的匹配词组；汉字模式每次通过 `q` 发送一个本地分出的完整含汉字词，并请求独立的 `dt=rm` 源读音。 |
-| Bing Translator | 只有当前精确 origin 已开启对应联网功能，且选择 Bing 时 | 先匿名 GET 临时配置而不执行页面脚本；片假名功能以 `ja -> en` 发送有界、换行连接的精确词组批次并严格逐行验收，汉字模式以 `ja -> ja` 每次发送一个本地分出的词，并只接受独立的 `inputTransliteration`。 |
+| Google Translate | 只有当前精确 origin 已开启对应联网功能，且选择 Google 时 | 片假名功能通过 `q` 发送有界的匹配词组；汉字模式通过 `q` 发送有界的 `🧩` 连接完整词批次，要求对齐的 `dt=rm` 结果，批量失败时只降级到同服务精确逐词请求。 |
+| Bing Translator | 只有当前精确 origin 已开启对应联网功能，且选择 Bing 时 | 先匿名 GET 临时配置而不执行页面脚本；片假名功能以 `ja -> en` 发送有界换行批次，汉字模式以 `ja -> ja` 发送有界换行完整词批次。两者都严格校验位置对齐，汉字模式只接受独立的 `inputTransliteration`。 |
 
 汉字联网请求不会包含周围句子或完整文本节点；两个联网功能都不会发送页面标题、页面 URL、origin 或浏览历史。Google 把提交的词或词组批次放在 URL 查询参数中，因此它们可能进入浏览器、扩展、网络设备、代理或服务端日志；Bing 把每个有界词组批次放在 POST 表单正文中，但内容仍会披露给浏览器扩展、网络链路和 Bing。
 
@@ -116,4 +116,4 @@ npm run verify:deterministic-build
 
 普通缺陷与功能讨论使用 GitHub Issues；安全或隐私漏洞必须使用 GitHub Private Vulnerability Reporting，不要在公开 Issue 中发布敏感细节。参见[简体中文贡献指南](CONTRIBUTING.zh-CN.md)和[安全报告方式](SECURITY.md)。
 
-YomiRuby 自有代码与贡献采用 [MIT License](LICENSE)。第三方许可证与来源记录见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。0.5.0 不要求 CLA 或 DCO。
+YomiRuby 自有代码与贡献采用 [MIT License](LICENSE)。第三方许可证与来源记录见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。0.6.0 不要求 CLA 或 DCO。

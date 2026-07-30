@@ -7,6 +7,7 @@ const source = await readFile(new URL("dist/yomi-ruby.user.js", projectRoot), "u
 const coordinatorSource = await readFile(new URL("src/coordinator.js", projectRoot), "utf8");
 const bingTranslationSource = await readFile(new URL("src/bing-translation.js", projectRoot), "utf8");
 const bingKanjiRomajiSource = await readFile(new URL("src/bing-kanji-romaji.js", projectRoot), "utf8");
+const googleKanjiRomajiSource = await readFile(new URL("src/google-kanji-romaji.js", projectRoot), "utf8");
 const kanjiRuntimeSource = await readFile(new URL("src/kanji-runtime.js", projectRoot), "utf8");
 const katakanaRuntimeSource = await readFile(new URL("src/katakana-runtime.js", projectRoot), "utf8");
 const manifest = JSON.parse(await readFile(new URL("vendor/manifest.json", projectRoot), "utf8"));
@@ -25,15 +26,15 @@ assert.notEqual(metadataEnd, -1, "Userscript metadata block is incomplete.");
 const metadata = source.slice(0, metadataEnd);
 const runtime = source.slice(metadataEnd);
 
-assert.equal(packageJson.version, "0.5.0");
+assert.equal(packageJson.version, "0.6.0");
 assert.equal(packageJson.private, true);
 assert.equal(packageJson.license, "MIT");
 assert.match(metadata, /^\/\/ @name\s+YomiRuby$/mu);
-assert.match(metadata, /^\/\/ @name:zh-CN\s+日语网页注音助手$/mu);
+assert.match(metadata, /^\/\/ @name:zh-CN\s+日语网页汉字罗马音与片假名英译$/mu);
 assert.match(metadata, /^\/\/ @namespace\s+yomi-ruby\.local$/mu);
-assert.match(metadata, /^\/\/ @version\s+0\.5\.0$/mu);
+assert.match(metadata, /^\/\/ @version\s+0\.6\.0$/mu);
 assert.match(metadata, /^\/\/ @description\s+Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text\.$/mu);
-assert.match(metadata, /^\/\/ @description:zh-CN\s+为日语网页添加可选本地或联网汉字罗马音，以及可选的联网片假名英文注音。$/mu);
+assert.match(metadata, /^\/\/ @description:zh-CN\s+为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。$/mu);
 assert.match(metadata, /^\/\/ @homepageURL\s+https:\/\/github\.com\/ywu73\/yomi-ruby$/mu);
 assert.match(metadata, /^\/\/ @supportURL\s+https:\/\/github\.com\/ywu73\/yomi-ruby\/issues$/mu);
 assert.match(metadata, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/ywu73\/yomi-ruby\/main\/dist\/yomi-ruby\.user\.js$/mu);
@@ -193,6 +194,22 @@ assert.match(
   bingKanjiRomajiSource,
   /echoedLines\.length !== words\.length \|\| romajiLines\.length !== words\.length/u,
 );
+assert.match(googleKanjiRomajiSource, /const BATCH_SEPARATOR = "🧩"/u);
+assert.match(googleKanjiRomajiSource, /maxPhrasesPerRequest = 50/u);
+assert.match(googleKanjiRomajiSource, /maxEncodedUrlLength = 1800/u);
+assert.match(googleKanjiRomajiSource, /minimumIntervalMs = 250/u);
+assert.match(googleKanjiRomajiSource, /requestTimeoutMs = 8000/u);
+assert.match(googleKanjiRomajiSource, /url\.searchParams\.set\("tl", "ja"\)/u);
+assert.match(googleKanjiRomajiSource, /words\.join\(BATCH_SEPARATOR\)/u);
+assert.match(googleKanjiRomajiSource, /typeof item\[2\] === "string"/u);
+assert.match(googleKanjiRomajiSource, /sourceCandidates\.length !== 1/u);
+assert.match(googleKanjiRomajiSource, /romajiCandidates\.length !== 1/u);
+assert.match(googleKanjiRomajiSource, /segments\.length !== words\.length/u);
+assert.match(googleKanjiRomajiSource, /SAFE_BATCH_ROMAJI = \/\^\[A-Za-zĀĪŪĒŌāīūēō'’ -\]\+\$\//u);
+assert.match(googleKanjiRomajiSource, /!word\.includes\(BATCH_SEPARATOR\)/u);
+assert.match(googleKanjiRomajiSource, /url\.searchParams\.set\("tl", "en"\)/u);
+assert.match(googleKanjiRomajiSource, /typeof item\[3\] === "string"/u);
+assert.match(googleKanjiRomajiSource, /sourceFragments\.join\(""\) !== word/u);
 assert.match(runtime, /response\.finalUrl \?\? response\.responseURL/u);
 assert.match(runtime, /anonymous: true/u);
 assert.doesNotMatch(runtime, /user-agent|User-Agent/u);
@@ -208,7 +225,6 @@ assert.match(runtime, /Segmenter = globalThis\.Intl\?\.Segmenter/u);
 assert.match(runtime, /new Segmenter\("ja", \{ granularity: "word" \}\)/u);
 assert.match(runtime, /isWordLike === true && HAS_KANJI\d*\.test\(segment\)/u);
 assert.match(runtime, /url\.searchParams\.append\("dt", "rm"\)/u);
-assert.match(runtime, /sourceFragments\.join\(""\) !== word/u);
 assert.match(runtime, /new URLSearchParams\(\{\s*fromLang: "ja",\s*to: "ja",\s*text: words\.join\("\\n"\)/su);
 assert.match(runtime, /echoedLines\[index\]\.trim\(\) !== word/u);
 assert.match(runtime, /echoedLines\.length !== words\.length \|\| romajiLines\.length !== words\.length/u);
@@ -262,7 +278,7 @@ assert.match(source, /Copyright \(c\) 2012 imaya/u);
 assert.match(source, /Copyright \(c\) 2017-2022 Katakana Terminator Contributors/u);
 
 console.log(
-  "build audit passed: YomiRuby 0.5.0 metadata, five bilingual controls, aligned bounded Google/Bing katakana batches, independent kanji/provider settings, strict Google/Bing source-romaji boundaries, 12 preloaded SRI resources, five audited GM request paths, and embedded canonical licenses/notices",
+  "build audit passed: YomiRuby 0.6.0 metadata, five bilingual controls, aligned bounded Google/Bing katakana and kanji batches, independent kanji/provider settings, strict Google/Bing source-romaji boundaries, 12 preloaded SRI resources, five audited GM request paths, and embedded canonical licenses/notices",
 );
 
 function escapeRegex(value) {

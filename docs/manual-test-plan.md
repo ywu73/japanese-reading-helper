@@ -1,4 +1,4 @@
-# Desktop Chrome + Tampermonkey manual test plan — YomiRuby 0.5.0
+# Desktop Chrome + Tampermonkey manual test plan — YomiRuby 0.6.0
 
 Do not install this candidate, mutate the user's Chrome/Tampermonkey state,
 operate a real site, or disable a separately installed Katakana Terminator
@@ -9,7 +9,7 @@ origin, and timestamps.
 ## 1. Artifact, metadata, install, and update
 
 1. Confirm the installed file is byte-identical to `dist/yomi-ruby.user.js`.
-2. Inspect `@name`, bilingual metadata, namespace, `@version 0.5.0`, MIT
+2. Inspect `@name`, bilingual metadata, namespace, `@version 0.6.0`, MIT
    metadata, homepage/support/download/update URLs, two ordinary web `@match`
    values, `@noframes`, twelve SRI `@resource` values, exact grants, and exactly
    three `@connect` values: `translate.googleapis.com`, `www.bing.com`, and
@@ -118,18 +118,27 @@ Capture extension-background traffic, not only the page target.
    confirm no Google request.
 2. After katakana enable, record exact GET host/path/query, no body/custom
    headers, and only matched deduplicated phrases joined by newlines in `q`.
-3. After Google kanji enable, confirm local `Intl.Segmenter` sends one complete,
-   deduplicated, `isWordLike` word containing Han per request with fixed
-   `sl=ja`, `tl=en`, `dt=t`, and `dt=rm`. Exercise `日本語`, `食べる`, `申し込む`,
-   `東京`, `今日`, and a rejected unknown word without using page-derived
-   private content.
-4. Confirm source fragments reconstruct the exact requested word, exactly one
-   independent romaji field is used, and ordinary translation is ignored.
-   Reject redirects, missing/duplicate romaji, source mismatch, unsafe characters,
-   malformed JSON, timeout, network error, and late output.
-5. Prove surrounding sentence, unrelated text, title, URL, origin, history,
-   analytics, telemetry, and fallback traffic are absent. Record that phrases
-   and words in the URL may enter logs.
+3. After Google kanji enable, confirm local `Intl.Segmenter` selects only
+   complete, deduplicated, `isWordLike` words containing Han. Confirm each fast
+   request uses fixed `sl=ja`, `tl=ja`, `dt=t`, and `dt=rm`, joins only those
+   words with `🧩`, contains at most 50 words, keeps the encoded URL at or below
+   1800 characters, waits at least 250 ms before the next request, and uses an
+   8-second timeout. Exercise `日本語`, `食べる`, `申し込む`, `東京`, `今日`, and
+   a rejected unknown word without using page-derived private content.
+4. Require `payload[2] === "ja"`, exactly one complete joined-source echo,
+   exactly one `item[2]` romaji field, and an exact output-segment count. Confirm
+   internal ASCII spaces such as `Kanagawa ken` are accepted, while one unsafe
+   aligned value such as `Ni~Tsu` skips only its own word without shifting
+   another reading.
+5. Exercise source mismatch, missing/duplicate echo or romaji, separator/count
+   drift, malformed JSON, redirect, HTTP 429, timeout, and network error. Confirm
+   the whole affected fast batch falls back only to serialized exact Google
+   single-word requests with `tl=en` and `item[3]`. Confirm cancellation aborts
+   the active request and starts no fallback, and ordinary translation never
+   substitutes for romaji.
+6. Prove surrounding sentence, unrelated text, title, URL, origin, history,
+   analytics, telemetry, cross-provider fallback, and Local fallback traffic
+   are absent. Record that phrases and words in the URL may enter logs.
 
 ### Bing
 
@@ -147,8 +156,9 @@ Capture extension-background traffic, not only the page target.
 5. Confirm GET sends no phrase. For katakana, confirm each POST sends a stable
    FIFO batch of at most 50 exact phrases joined only by newlines, with encoded
    `text` length at most 1800 characters, a minimum 250 ms inter-batch interval,
-   and an 8-second timeout. Confirm each kanji POST still sends exactly one
-   locally segmented complete word. Both paths include only fixed protocol fields
+   and an 8-second timeout. Confirm each kanji POST sends a stable FIFO batch of
+   at most 50 locally segmented complete words joined only by newlines, with
+   encoded `text` length at most 1800 characters. Both paths include only fixed protocol fields
    and page-derived temporary config;
    no surrounding context or page metadata is present.
 6. Confirm IID comes from `#rich_tta`, token expiry follows the page value with
@@ -156,7 +166,7 @@ Capture extension-background traffic, not only the page target.
    direct `window._G.IG` assignment and the current bounded `_G` object
    initializer; duplicate candidates across either shape must fail closed.
 7. Exercise token expiry and 401: exactly one config refresh and one affected
-   katakana-batch or kanji-word retry. Exercise second 401, 429, `ShowCaptcha`, malformed HTML/JSON, wrong
+   katakana or kanji batch retry. Exercise second 401, 429, `ShowCaptcha`, malformed HTML/JSON, wrong
    language/target, timeout, network error, and abort: fail closed, no retry
    storm, CAPTCHA bypass, host widening, Cookie use, or Google fallback.
 8. For katakana, require exactly one non-empty, changed, Latin-containing output
@@ -166,9 +176,10 @@ Capture extension-background traffic, not only the page target.
    Latin `inputTransliteration` metadata object. Confirm the metadata is ignored
    rather than displayed or routed into Local Kanji Romaji. Reject a wrong
    script, non-Latin value, unknown field, or third response item.
-9. For kanji, require `fromLang=ja`, `to=ja`, exact source echo, and exactly one
-   independent `{ inputTransliteration, script: "Latn" }`. Do not hard-reject
-   solely because `detectedLanguage` is `zh-Hans`. Reject rewritten source,
+9. For kanji, require `fromLang=ja`, `to=ja`, exact newline source echo, and
+   exactly one independent `{ inputTransliteration, script: "Latn" }` whose line
+   count and order match the source batch. Do not hard-reject solely because
+   `detectedLanguage` is `zh-Hans`. Reject rewritten source, line-count drift,
    missing/duplicate metadata, wrong script/target, unsafe romaji, HTTP 429,
    CAPTCHA, second 401, timeout, cancellation, and late results without Local or
    Google fallback.
@@ -192,10 +203,10 @@ names, non-English loanwords, onomatopoeia, and excluded single-character cases.
 4. Hide the tab, add and remove candidate nodes, and confirm no new request
    starts while hidden. Return to the tab and confirm only currently connected
    safe DOM is rescanned.
-5. Confirm one network request maximum in flight per adapter and the shared
-   katakana limits of 50 candidates, 1800 encoded payload characters, 250 ms
-   inter-batch delay, and 8-second timeout. Confirm Bing kanji remains
-   one-word-per-request.
+5. Confirm one network request maximum in flight per adapter. Confirm Google
+   katakana, Google kanji fast-path, Bing katakana, and Bing kanji all enforce
+   their documented 50-candidate, 1800-character, 250 ms, and 8-second batch
+   limits; confirm Google kanji exact-word fallback remains serialized.
 6. Enable both features with the same provider and confirm their two independent
    clients may be in flight concurrently without sharing queue, configuration,
    counter, cancellation, or generation state.
@@ -224,7 +235,7 @@ YomiRuby-owned UI. Confirm:
 
 ## 8. Failure, CSP, and real-site gates
 
-Confirm 0.5.0 still installs/preloads all twelve Kuromoji resources and performs
+Confirm 0.6.0 still installs/preloads all twelve Kuromoji resources and performs
 no runtime dynamic dictionary download/cache/delete flow. Treat the proposed
 roughly 17 MiB lazy cache as unimplemented rather than as a failed fallback.
 

@@ -1,8 +1,8 @@
 # Network audit
 
-## YomiRuby 0.5.0 transitional local candidate model
+## YomiRuby 0.6.0 transitional local candidate model
 
-Version 0.5.0 retains the twelve exact `kuromoji@0.1.2` dictionary resources,
+Version 0.6.0 retains the twelve exact `kuromoji@0.1.2` dictionary resources,
 their byte lengths, SHA-256 digests, SRI metadata, and the local-resource reader.
 This transition deliberately keeps all twelve dictionaries preloaded; the
 proposed roughly 17 MiB lazy Tampermonkey cache is not implemented or verified.
@@ -44,12 +44,19 @@ request in flight, a minimum interval, and an abort path.
 
 Local `Intl.Segmenter("ja", { granularity: "word" })` first produces complete,
 deduplicated, `isWordLike` candidates containing Han characters. Offset
-ambiguity fails before a request. Google receives one candidate per GET with
-fixed `client=gtx`, `sl=ja`, `tl=en`, `dt=t`, and `dt=rm`. The final response
-URL must equal the exact request URL; source fragments must reconstruct the
-requested word exactly; and exactly one independent, strictly bounded romaji
-field must pass the allowed character set. Ordinary translation cannot
-substitute for romaji.
+ambiguity fails before a request. The fast path groups at most 50 exact words
+with `🧩`, keeps the encoded URL at or below 1800 characters, and uses fixed
+`client=gtx`, `sl=ja`, `tl=ja`, `dt=t`, and `dt=rm`. The final response URL must
+equal the exact request URL; exactly one source echo must equal the submitted
+joined string; exactly one `item[2]` romaji field must split to the requested
+word count. Each aligned segment is independently checked against the bounded
+space-aware romaji character set.
+
+Malformed structure, source/count drift, HTTP error including 429, timeout,
+network failure, or final-URL mismatch abandons the whole fast-path batch and
+falls back only to Google's existing exact single-word `tl=en`/`item[3]` path.
+Cancellation starts no fallback. Ordinary translation cannot substitute for
+romaji, and an unsafe segment in an otherwise aligned batch skips only its word.
 
 Google query URLs disclose the submitted words or phrases to browser,
 extension, network, proxy, and service logging surfaces.
@@ -79,17 +86,19 @@ Each POST contains at most 50 exact phrases joined by newlines, with at most
 flight, and at least 250 ms between batch starts. It requires one translation
 text with exactly one non-empty, changed, Latin-containing output line per input
 phrase; any positional ambiguity rejects the whole batch. It may validate then
-ignore one exact bounded Latin `{ inputTransliteration, script: "Latn" }` object. The kanji client sends
-one locally segmented word with `fromLang=ja` and `to=ja`. It requires the
-translation body to echo that word exactly and accepts only one independent
-`inputTransliteration` with `script: "Latn"`. `detectedLanguage=zh-Hans` is not
+ignore one exact bounded Latin `{ inputTransliteration, script: "Latn" }`
+object. The kanji client sends stable FIFO batches of at most 50 locally
+segmented words joined by newlines, with at most 1800 encoded characters in
+`text`, `fromLang=ja`, and `to=ja`. The translation echo and the independent
+`inputTransliteration` with `script: "Latn"` must both preserve exact line count
+and order. `detectedLanguage=zh-Hans` is not
 a standalone hard rejection because a live `山 -> yama` probe exhibited that
 combination. A rewritten source, wrong target/script, unsafe romaji, unknown
 field, missing object, or additional response item fails closed.
 
 Each Bing adapter fully serializes its traffic. HTTP 401 invalidates temporary
-configuration, refetches it once, and retries only the affected katakana batch
-or kanji word once. A second 401, HTTP 429, `ShowCaptcha`, timeout, network error, malformed
+configuration, refetches it once, and retries only the affected katakana or
+kanji batch once. A second 401, HTTP 429, `ShowCaptcha`, timeout, network error, malformed
 or ambiguous data, or unsuitable result fails closed. CAPTCHA is not bypassed.
 There is no identifier rotation, cross-provider fallback, spell-check, lookup,
 examples, telemetry, logging, history, ads, or account endpoint.
@@ -102,8 +111,8 @@ probe is not proof of real Chrome/Tampermonkey transport behavior.
 
 ### Shared disclosure, state, and static evidence
 
-Online kanji sends only one complete locally segmented word, never a surrounding
-sentence or complete text node. Neither online feature sends page titles, page
+Online kanji sends only batches of complete locally segmented words, never a
+surrounding sentence or complete text node. Neither online feature sends page titles, page
 URLs, origins, or browsing history. This is bounded disclosure, not zero
 disclosure: the selected provider receives each submitted word or phrase and
 ordinary request metadata exists.
@@ -134,7 +143,7 @@ permission, or extra request call sites.
 The Google and Bing web endpoints are undocumented, non-contractual,
 best-effort interfaces. Availability, regional reachability, redirect behavior,
 rate limits, response formats, correctness, and continued no-key access may
-change. No 0.5.0 Tampermonkey installation, online-kanji extension-background
+change. No 0.6.0 Tampermonkey installation, online-kanji extension-background
 capture, no-proxy mainland-China check, reload-persistence test, x.com run, or
 standalone Katakana Terminator migration has been performed. Local checks do not
 prove installed-extension transport, browser compatibility, reading accuracy,

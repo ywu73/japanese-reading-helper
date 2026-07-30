@@ -20,4 +20,4 @@ npm run verify:vendor
 npm run verify:deterministic-build
 ```
 
-变更说明应写清改动内容、涉及的隐私或网络表面、实际执行的命令，以及仍未验证的浏览器或发布声明。贡献采用 YomiRuby 的 MIT License。0.5.0 不要求 Contributor License Agreement 或 Developer Certificate of Origin。
+变更说明应写清改动内容、涉及的隐私或网络表面、实际执行的命令，以及仍未验证的浏览器或发布声明。贡献采用 YomiRuby 的 MIT License。0.6.0 不要求 Contributor License Agreement 或 Developer Certificate of Origin。

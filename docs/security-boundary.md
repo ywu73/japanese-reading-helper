@@ -1,6 +1,6 @@
-# Security and privacy boundary — YomiRuby 0.5.0
+# Security and privacy boundary — YomiRuby 0.6.0
 
-This document describes the 0.5.0 transitional release candidate's intended
+This document describes the 0.6.0 transitional release candidate's intended
 boundary and local evidence. It is not a claim that desktop Chrome + Tampermonkey,
 extension-background traffic, install/update behavior, or real sites have
 already passed verification.
@@ -53,7 +53,7 @@ accepts only `blob:`, `data:`, `chrome-extension:`, or `moz-extension:` URLs
 returned by `GM_getResourceURL`; it rejects HTTP(S), verifies exact byte length
 and SHA-256, and has no remote fallback.
 
-Version 0.5.0 deliberately retains preloading of all twelve dictionary
+Version 0.6.0 deliberately retains preloading of all twelve dictionary
 resources. It does not claim that the proposed roughly 17 MiB lazy Tampermonkey
 cache has been implemented or verified.
 
@@ -62,25 +62,32 @@ cache has been implemented or verified.
 Online kanji analysis requires local `Intl.Segmenter("ja", { granularity:
 "word" })`. Segment offsets must exactly and continuously cover the source text.
 Only complete, deduplicated, `isWordLike` segments containing Han characters
-are eligible, including mixed words such as `食べる`. One word is sent per
-request. Complete text nodes, sentences, surrounding context, page titles, page
-URLs, origins, and history are not sent. Segmenter or offset ambiguity fails
-before network traffic.
+are eligible, including mixed words such as `食べる`. The clients group only
+those exact candidates; complete text nodes, sentences, surrounding context,
+page titles, page URLs, origins, and history are not sent. Segmenter or offset
+ambiguity fails before network traffic.
 
-Google fixes `client=gtx`, `sl=ja`, `tl=en`, `dt=t`, and `dt=rm`. It accepts
-only one independent romaji field after returned source fragments exactly
-reconstruct the requested word; ordinary translation text is never used as
-romaji. Bing fixes `fromLang=ja` and `to=ja`, requires the translation body to
-echo the requested word exactly, and accepts only one independent
-`{ inputTransliteration, script: "Latn" }` object. Bing's reported
+Google's fast path fixes `client=gtx`, `sl=ja`, `tl=ja`, `dt=t`, and `dt=rm`,
+and joins at most 50 exact words with `🧩` under a maximum 1800-character URL.
+It requires one exact joined-source echo, one independent `item[2]` romaji
+field, and exactly one aligned segment per word. A structurally or
+transport-invalid batch falls back only to Google's pre-existing exact
+single-word `tl=en`/`item[3]` path. A safe batch may omit one unsafe segment
+without shifting another word. Ordinary translation text is never used as
+romaji.
+
+Bing fixes `fromLang=ja` and `to=ja` and joins at most 50 exact words with
+newlines under a maximum 1800-character encoded `text` budget. Both the echoed
+source lines and the independent `{ inputTransliteration, script: "Latn" }`
+lines must remain exactly aligned. Bing's reported
 `detectedLanguage` is not a standalone hard gate because a live probe returned
 `zh-Hans` for a valid `山 -> yama` result.
 
-Both clients apply strict single-word character and response-shape checks.
+Both clients apply strict candidate character and response-shape checks.
 Accepted online output is displayed as returned; it is not converted or claimed
 to be verified modified Hepburn. Successes, failures, pending requests, and
-deduplication caches remain in page memory. Failure preserves source text and
-never resends the word to the other provider or silently loads Local.
+deduplication caches remain in page memory. Provider failure preserves source
+text and never resends the word to the other provider or silently loads Local.
 
 ### Optional Online Katakana English
 
@@ -106,10 +113,11 @@ https://translate.googleapis.com/translate_a/single
 
 For katakana, fixed parameters are `client=gtx`, `dt=t`, `sl=ja`, and `tl=en`;
 `q` contains deduplicated phrases joined by newlines. Each batch contains at
-most 50 phrases and its encoded URL is at most 1800 characters. For kanji, the same exact
-endpoint receives one complete locally segmented word plus `dt=rm`. Because
-submitted text is in the URL, it may be retained in browser, extension, network
-appliance, proxy, or service logs.
+most 50 phrases and its encoded URL is at most 1800 characters. For kanji, the
+same exact endpoint receives bounded `🧩`-joined complete-word batches plus
+`dt=rm`, or one exact word through the same-provider fallback. Because
+submitted text is in the URL, it may be retained in browser, extension,
+network appliance, proxy, or service logs.
 
 #### Bing
 
@@ -127,15 +135,14 @@ IID specifically attached to `#rich_tta`, and a strict temporary
 key/token/expiry tuple. Missing, duplicate, malformed, oversized, or ambiguous
 values fail closed.
 
-The Bing katakana runtime sends stable FIFO batches anonymously in a form-encoded
-POST to the same approved origin's `/ttranslatev3` path. Each batch contains at
-most 50 exact phrases joined by newlines, and the encoded `text` payload is at
-most 1800 characters. The Bing kanji runtime continues to send one exact word
-per POST. Katakana uses `ja -> en`; kanji uses `ja -> ja`. Both use an 8-second
-timeout; katakana batches have a minimum 250 ms start interval. Temporary Bing configuration,
+The Bing runtimes send stable FIFO batches anonymously in a form-encoded POST
+to the same approved origin's `/ttranslatev3` path. Each batch contains at most
+50 exact phrases or words joined by newlines, and the encoded `text` payload is
+at most 1800 characters. Katakana uses `ja -> en`; kanji uses `ja -> ja`. Both
+use an 8-second timeout and a minimum 250 ms batch-start interval. Temporary Bing configuration,
 expiry, counter, request state, translations, failures, and queues remain in
 page memory. HTTP 401 permits one configuration refresh and one retry for the
-affected katakana batch or kanji word. A second 401, HTTP 429, CAPTCHA, unknown response, timeout,
+affected katakana or kanji batch. A second 401, HTTP 429, CAPTCHA, unknown response, timeout,
 network error, or parse/integrity failure stops the operation without bypass or
 cross-provider fallback.
 
@@ -150,11 +157,12 @@ line per input phrase. A missing, extra, blank, unchanged, or non-Latin line
 rejects the whole batch; YomiRuby never shifts later lines onto earlier phrases.
 The response may include one exact, bounded Latin `inputTransliteration`
 metadata object after the required translation result; it is validated and
-ignored. For kanji, a single such object is required and is
-accepted only after the `ja -> ja` translation body exactly echoes the requested
-word. It is displayed as the online reading but never persisted or passed to
-Local mode. Unknown fields, a wrong script, a non-Latin value, rewritten source,
-or additional response items fail closed.
+ignored. For kanji, a single such object is required. Its newline-separated
+readings and the `ja -> ja` source echo must both have the exact requested word
+count and order; every echoed line must match its input word. Each safe aligned
+reading is displayed but never persisted or passed to Local mode. Unknown
+fields, a wrong script, a non-Latin value, rewritten source, count drift, or
+additional response items fail closed.
 
 ## Public network roles
 

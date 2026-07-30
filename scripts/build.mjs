@@ -36,11 +36,11 @@ const resourceMetadata = vendorManifest.dictionary
   .join("\n");
 const header = `// ==UserScript==
 // @name         YomiRuby
-// @name:zh-CN   日语网页注音助手
+// @name:zh-CN   日语网页汉字罗马音与片假名英译
 // @namespace    yomi-ruby.local
 // @version      ${packageJson.version}
 // @description  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
-// @description:zh-CN  为日语网页添加可选本地或联网汉字罗马音，以及可选的联网片假名英文注音。
+// @description:zh-CN  为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。
 // @homepageURL  https://github.com/ywu73/yomi-ruby
 // @supportURL   https://github.com/ywu73/yomi-ruby/issues
 // @downloadURL  https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js

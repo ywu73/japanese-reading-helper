@@ -30,5 +30,5 @@ npm run verify:deterministic-build
 Describe what changed, which privacy or network surfaces are affected, the
 commands actually run, and every browser or publication claim that remains
 unverified. Contributions are accepted under YomiRuby's MIT License. Version
-0.5.0 uses neither a Contributor License Agreement nor a Developer Certificate
+0.6.0 uses neither a Contributor License Agreement nor a Developer Certificate
 of Origin.

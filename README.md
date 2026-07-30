@@ -7,7 +7,7 @@ It adds romaji above words containing kanji through a selected Local, Google,
 or Bing mode and can add best-effort English ruby above matched katakana
 phrases through a separately selected online provider.
 
-**Version 0.5.0 is a locally verified release candidate. It has not yet passed
+**Version 0.6.0 is a locally verified release candidate. It has not yet passed
 the required desktop Chrome + Tampermonkey installation, extension-background
 network capture, update, real-site, or publication gates.**
 
@@ -20,10 +20,13 @@ network capture, update, real-site, or publication gates.**
   installations without that setting migrate to Local so an update cannot
   silently disclose kanji.
 - Local runs pinned `kuromoji@0.1.2` in the page and uses modified Hepburn with
-  macrons. The transitional 0.5.0 build still preloads all twelve dictionaries.
+  macrons. The transitional 0.6.0 build still preloads all twelve dictionaries.
 - Google/Bing use local `Intl.Segmenter` word boundaries and send only complete,
-  deduplicated words containing kanji, one word per request. They never send a
-  complete sentence, surrounding context, title, URL, origin, or history.
+  deduplicated words containing kanji. Google uses bounded `🧩`-joined batches
+  with strict positional gates and an exact single-word fallback; Bing uses
+  bounded newline batches with both source-echo and transliteration alignment.
+  They never send a complete sentence, surrounding context, title, URL,
+  origin, or history.
 - Online modes accept only a strict source-owned romanization/transliteration
   field. They never use ordinary English translation as romaji and never fall
   back to another provider or Local after failure.
@@ -56,7 +59,7 @@ The planned sole install and automatic-update URL is:
 
 <https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js>
 
-Do not treat that URL as a released stable build until the 0.5.0 browser and
+Do not treat that URL as a released stable build until the 0.6.0 browser and
 publication gates are recorded as complete. The supported compatibility target
 for the first public release is **desktop Google Chrome with Tampermonkey**.
 Other browsers and userscript managers are unverified and receive no
@@ -109,8 +112,8 @@ persisted.
 |---|---|---|
 | GitHub Raw | Userscript install and automatic update | Downloads the userscript artifact; normal server request metadata applies. |
 | unpkg | Tampermonkey install and update of fixed resources | Downloads twelve immutable `kuromoji@0.1.2` dictionary resources pinned by URL, size, and SHA-256. Page text is not part of these requests. |
-| Google Translate | Only while an exact-origin online feature is enabled and Google is selected | Katakana sends bounded matched phrases in `q`; Kanji mode sends one locally segmented complete word containing kanji in `q` and requests a separate `dt=rm` source reading. |
-| Bing Translator | Only while an exact-origin online feature is enabled and Bing is selected | An anonymous GET parses temporary configuration without executing page script. Katakana sends bounded newline-joined exact-phrase batches with `ja -> en` and validates every output line; Kanji mode sends one locally segmented word with `ja -> ja` and accepts only an independent `inputTransliteration`. |
+| Google Translate | Only while an exact-origin online feature is enabled and Google is selected | Katakana sends bounded matched phrases in `q`; Kanji mode sends bounded `🧩`-joined complete-word batches in `q`, requires an aligned `dt=rm` result, and falls back only to exact single-word requests on batch failure. |
+| Bing Translator | Only while an exact-origin online feature is enabled and Bing is selected | An anonymous GET parses temporary configuration without executing page script. Katakana sends bounded newline-joined exact-phrase batches with `ja -> en`; Kanji mode sends bounded newline-joined complete-word batches with `ja -> ja`. Both validate positional alignment, and Kanji accepts only an independent `inputTransliteration`. |
 
 Neither online Kanji provider request includes surrounding sentences or text
 nodes, and neither online feature sends page titles, page URLs, origins, or
@@ -203,4 +206,4 @@ sensitive details in a public Issue. See [CONTRIBUTING.md](CONTRIBUTING.md) and
 YomiRuby-owned code and contributions are licensed under the [MIT License](LICENSE).
 Third-party license and provenance material is recorded in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). No CLA or DCO is required for
-version 0.5.0.
+version 0.6.0.
