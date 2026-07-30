@@ -35,8 +35,9 @@ const resourceMetadata = vendorManifest.dictionary
   .map((asset) => `// @resource     ${asset.resourceName} ${asset.url}#sha256=${asset.sha256}`)
   .join("\n");
 const header = `// ==UserScript==
-// @name         YomiRuby
-// @name:zh-CN   日语网页汉字罗马音与片假名英译
+// @name         日语网页汉字罗马音与片假名英译 ｜ YomiRuby
+// @name:zh-CN   日语网页汉字罗马音与片假名英译 ｜ YomiRuby
+// @name:en      YomiRuby
 // @namespace    yomi-ruby.local
 // @version      ${packageJson.version}
 // @description  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.

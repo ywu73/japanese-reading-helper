@@ -1,8 +1,9 @@
 // ==UserScript==
-// @name         YomiRuby
-// @name:zh-CN   日语网页汉字罗马音与片假名英译
+// @name         日语网页汉字罗马音与片假名英译 ｜ YomiRuby
+// @name:zh-CN   日语网页汉字罗马音与片假名英译 ｜ YomiRuby
+// @name:en      YomiRuby
 // @namespace    yomi-ruby.local
-// @version      0.6.0
+// @version      0.6.1
 // @description  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:zh-CN  为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。
 // @homepageURL  https://github.com/ywu73/yomi-ruby

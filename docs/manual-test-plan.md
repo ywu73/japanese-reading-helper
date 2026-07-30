@@ -1,4 +1,4 @@
-# Desktop Chrome + Tampermonkey manual test plan — YomiRuby 0.6.0
+# Desktop Chrome + Tampermonkey manual test plan — YomiRuby 0.6.1
 
 Do not install this candidate, mutate the user's Chrome/Tampermonkey state,
 operate a real site, or disable a separately installed Katakana Terminator
@@ -9,7 +9,8 @@ origin, and timestamps.
 ## 1. Artifact, metadata, install, and update
 
 1. Confirm the installed file is byte-identical to `dist/yomi-ruby.user.js`.
-2. Inspect `@name`, bilingual metadata, namespace, `@version 0.6.0`, MIT
+2. Inspect the combined public `@name`, localized name metadata, namespace,
+   `@version 0.6.1`, MIT
    metadata, homepage/support/download/update URLs, two ordinary web `@match`
    values, `@noframes`, twelve SRI `@resource` values, exact grants, and exactly
    three `@connect` values: `translate.googleapis.com`, `www.bing.com`, and
@@ -235,7 +236,7 @@ YomiRuby-owned UI. Confirm:
 
 ## 8. Failure, CSP, and real-site gates
 
-Confirm 0.6.0 still installs/preloads all twelve Kuromoji resources and performs
+Confirm 0.6.1 still installs/preloads all twelve Kuromoji resources and performs
 no runtime dynamic dictionary download/cache/delete flow. Treat the proposed
 roughly 17 MiB lazy cache as unimplemented rather than as a failed fallback.
 

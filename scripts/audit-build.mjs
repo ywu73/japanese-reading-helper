@@ -26,13 +26,14 @@ assert.notEqual(metadataEnd, -1, "Userscript metadata block is incomplete.");
 const metadata = source.slice(0, metadataEnd);
 const runtime = source.slice(metadataEnd);
 
-assert.equal(packageJson.version, "0.6.0");
+assert.equal(packageJson.version, "0.6.1");
 assert.equal(packageJson.private, true);
 assert.equal(packageJson.license, "MIT");
-assert.match(metadata, /^\/\/ @name\s+YomiRuby$/mu);
-assert.match(metadata, /^\/\/ @name:zh-CN\s+日语网页汉字罗马音与片假名英译$/mu);
+assert.match(metadata, /^\/\/ @name\s+日语网页汉字罗马音与片假名英译 ｜ YomiRuby$/mu);
+assert.match(metadata, /^\/\/ @name:zh-CN\s+日语网页汉字罗马音与片假名英译 ｜ YomiRuby$/mu);
+assert.match(metadata, /^\/\/ @name:en\s+YomiRuby$/mu);
 assert.match(metadata, /^\/\/ @namespace\s+yomi-ruby\.local$/mu);
-assert.match(metadata, /^\/\/ @version\s+0\.6\.0$/mu);
+assert.match(metadata, /^\/\/ @version\s+0\.6\.1$/mu);
 assert.match(metadata, /^\/\/ @description\s+Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text\.$/mu);
 assert.match(metadata, /^\/\/ @description:zh-CN\s+为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。$/mu);
 assert.match(metadata, /^\/\/ @homepageURL\s+https:\/\/github\.com\/ywu73\/yomi-ruby$/mu);
@@ -278,7 +279,7 @@ assert.match(source, /Copyright \(c\) 2012 imaya/u);
 assert.match(source, /Copyright \(c\) 2017-2022 Katakana Terminator Contributors/u);
 
 console.log(
-  "build audit passed: YomiRuby 0.6.0 metadata, five bilingual controls, aligned bounded Google/Bing katakana and kanji batches, independent kanji/provider settings, strict Google/Bing source-romaji boundaries, 12 preloaded SRI resources, five audited GM request paths, and embedded canonical licenses/notices",
+  "build audit passed: YomiRuby 0.6.1 metadata, five bilingual controls, aligned bounded Google/Bing katakana and kanji batches, independent kanji/provider settings, strict Google/Bing source-romaji boundaries, 12 preloaded SRI resources, five audited GM request paths, and embedded canonical licenses/notices",
 );
 
 function escapeRegex(value) {
