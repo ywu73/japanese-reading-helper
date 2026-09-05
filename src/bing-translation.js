@@ -37,7 +37,7 @@ export function createBingTranslationClient({
   let requestSequence = 0;
   let lastBatchStartedAt = null;
 
-  const translatePhrases = (phrases, { signal } = {}) => {
+  const translatePhrases = (phrases, { signal, onBatch } = {}) => {
     const operation = operationQueue.then(async () => {
       throwIfAborted(signal);
       const uniquePhrases = [...new Set(phrases.filter((phrase) => isEligiblePhrase(
@@ -54,6 +54,8 @@ export function createBingTranslationClient({
         for (const [phrase, translated] of translatedBatch) {
           translations.set(phrase, translated);
         }
+        throwIfAborted(signal);
+        onBatch?.({ phrases: batch, translations: translatedBatch });
       }
       return translations;
     });

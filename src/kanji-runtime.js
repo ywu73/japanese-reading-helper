@@ -1,11 +1,12 @@
 export class KanjiRuntime {
-  constructor({ mode, analyzerFactories, onPlanChanged = () => {} }) {
+  constructor({ mode, analyzerFactories, onPlanChanged = () => {}, onIdle = () => {} }) {
     if (!analyzerFactories || typeof analyzerFactories[mode] !== "function") {
       throw new TypeError(`No kanji analyzer adapter is available for mode: ${mode}`);
     }
     this.mode = mode;
     this.analyzerFactories = analyzerFactories;
     this.onPlanChanged = onPlanChanged;
+    this.onIdle = onIdle;
     this.active = false;
     this.paused = false;
     this.analyzer = null;
@@ -100,6 +101,10 @@ export class KanjiRuntime {
     this.disable();
   }
 
+  hasPendingWork() {
+    return this.processing || this.flushScheduled || this.queue.length > 0;
+  }
+
   #drain() {
     if (!this.active || this.paused || this.processing || this.queue.length === 0) {
       return;
@@ -144,9 +149,13 @@ export class KanjiRuntime {
     ) {
       return;
     }
+    const wasAsync = this.processing;
     this.#publish(entry, ranges);
     this.processing = false;
     this.#drain();
+    if (wasAsync && !this.hasPendingWork()) {
+      this.onIdle();
+    }
   }
 
   #scheduleBatch() {
@@ -197,6 +206,9 @@ export class KanjiRuntime {
     }
     this.processing = false;
     this.#drain();
+    if (!this.hasPendingWork()) {
+      this.onIdle();
+    }
   }
 
   #publish(entry, ranges) {

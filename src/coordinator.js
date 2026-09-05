@@ -4,6 +4,7 @@ import {
   shouldSkipTextNode,
 } from "./dom.js";
 import { findKatakanaMatches } from "./katakana.js";
+import { ViewportScheduler } from "./viewport-scheduler.js";
 
 export class AnnotationCoordinator {
   constructor({
@@ -43,6 +44,7 @@ export class AnnotationCoordinator {
     this.flushTimer = null;
     this.scanHandle = null;
     this.mutationObserver = null;
+    this.viewport = null;
     this.onVisibilityChange = () => this.#handleVisibilityChange();
   }
 
@@ -96,6 +98,10 @@ export class AnnotationCoordinator {
     this.#processRecord(record);
   }
 
+  continuePending() {
+    this.#scheduleNodeDrain();
+  }
+
   stop() {
     this.kanjiRuntime = null;
     this.katakanaRuntime = null;
@@ -107,6 +113,10 @@ export class AnnotationCoordinator {
       return;
     }
     this.active = true;
+    this.viewport = new ViewportScheduler({
+      document: this.document,
+      onReady: () => this.#scheduleNodeDrain(),
+    });
     this.hidden = this.document.visibilityState === "hidden";
     this.document.addEventListener("visibilitychange", this.onVisibilityChange);
     if (this.MutationObserver) {
@@ -132,6 +142,8 @@ export class AnnotationCoordinator {
     this.document.removeEventListener("visibilitychange", this.onVisibilityChange);
     this.mutationObserver?.disconnect();
     this.mutationObserver = null;
+    this.viewport?.stop();
+    this.viewport = null;
     this.#cancelScheduledWork();
     this.pendingRoots.clear();
     this.scanJobs.length = 0;
@@ -191,7 +203,7 @@ export class AnnotationCoordinator {
         this.#discardDetachedOwnership(node);
       }
       for (const node of mutation.addedNodes) {
-        if (this.nodeRecords.has(node)) {
+        if (this.nodeRecords.has(node) && !this.viewport?.has(this.nodeRecords.get(node))) {
           continue;
         }
         if (
@@ -267,12 +279,22 @@ export class AnnotationCoordinator {
   }
 
   #processTextNode(node) {
+    const owned = this.nodeRecords.get(node);
+    if (owned) {
+      // A deferred source may have moved to a different parent while waiting.
+      if (this.viewport?.has(owned)) {
+        this.viewport.forget(owned);
+        if (!this.viewport.defer(owned)) {
+          this.#activateDeferred(owned);
+        }
+      }
+      return;
+    }
     const text = node.textContent;
     const candidate = (this.kanjiRuntime && /\p{Script=Han}/u.test(text))
       || (this.katakanaRuntime && findKatakanaMatches(text).length > 0);
     if (
       !node?.isConnected
-      || this.nodeRecords.has(node)
       || !candidate
       || shouldSkipTextNode(node, this.scanStyleCache)
     ) {
@@ -287,11 +309,13 @@ export class AnnotationCoordinator {
     };
     this.records.add(record);
     this.nodeRecords.set(node, record);
-    this.#processRecord(record);
+    if (!this.viewport?.defer(record)) {
+      this.#processRecord(record);
+    }
   }
 
   #scheduleNodeDrain() {
-    if (!this.active || this.hidden || this.scanHandle != null || this.scanJobs.length === 0) {
+    if (!this.active || this.hidden || this.scanHandle != null || !this.#hasRunnableWork()) {
       return;
     }
     if (this.requestIdleCallback) {
@@ -312,14 +336,31 @@ export class AnnotationCoordinator {
       return;
     }
     let processed = 0;
+    let backgroundProcessed = 0;
     const startedAt = this.now();
     this.scanStyleCache = new WeakMap();
     while (
-      this.scanJobs.length > 0
+      this.#hasRunnableWork(backgroundProcessed > 0)
       && processed < this.scanBatchSize
+      && backgroundProcessed < 32
       && (processed === 0 || this.now() - startedAt < this.scanBudgetMs)
       && (deadline.didTimeout || deadline.timeRemaining() > 1)
     ) {
+      const ready = this.viewport?.takeReady();
+      if (ready) {
+        this.#activateDeferred(ready);
+        processed += 1;
+        continue;
+      }
+      if (this.scanJobs.length === 0) {
+        const record = this.viewport?.takeBackground();
+        if (record) {
+          this.#activateDeferred(record);
+          backgroundProcessed += 1;
+        }
+        processed += 1;
+        continue;
+      }
       const job = this.scanJobs[0];
       const node = job.next;
       if (!node || !job.root.isConnected) {
@@ -352,6 +393,22 @@ export class AnnotationCoordinator {
     this.#scheduleNodeDrain();
   }
 
+  #hasRunnableWork(continuingBackgroundBatch = false) {
+    return this.scanJobs.length > 0 || this.viewport?.hasReady || (
+      this.viewport?.hasDeferred && (continuingBackgroundBatch || (
+        !this.kanjiRuntime?.hasPendingWork?.() && !this.katakanaRuntime?.hasPendingWork?.()
+      ))
+    );
+  }
+
+  #activateDeferred(record) {
+    if (!this.#recordIsCurrent(record) || shouldSkipTextNode(record.currentNodes[0])) {
+      this.#discardRecord(record);
+      return;
+    }
+    this.#processRecord(record);
+  }
+
   #processRecord(record) {
     if (!this.#recordIsCurrent(record)) {
       this.#discardRecord(record);
@@ -379,8 +436,11 @@ export class AnnotationCoordinator {
       return;
     }
     for (const record of [...this.records]) {
-      this.#processRecord(record);
+      if (!this.viewport?.has(record)) {
+        this.#processRecord(record);
+      }
     }
+    this.#scheduleNodeDrain();
   }
 
   #renderRecord(record, annotations) {
@@ -474,9 +534,11 @@ export class AnnotationCoordinator {
     }
     this.kanjiRuntime?.forget(record);
     this.katakanaRuntime?.forget(record);
+    this.viewport?.forget(record);
     const parent = record.currentNodes[0]?.parentNode;
     if (
       parent
+      && record.planKey !== "[]"
       && record.currentNodes.every((node) => node.parentNode === parent)
       && record.currentNodes.map(sourceText).join("") === record.originalText
     ) {

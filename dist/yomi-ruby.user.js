@@ -3492,7 +3492,7 @@
     let operationQueue = Promise.resolve();
     let requestSequence = 0;
     let lastBatchStartedAt = null;
-    const translatePhrases = (phrases, { signal } = {}) => {
+    const translatePhrases = (phrases, { signal, onBatch } = {}) => {
       const operation = operationQueue.then(async () => {
         throwIfAborted2(signal);
         const uniquePhrases = [...new Set(phrases.filter((phrase) => isEligiblePhrase(
@@ -3509,6 +3509,8 @@
           for (const [phrase, translated] of translatedBatch) {
             translations.set(phrase, translated);
           }
+          throwIfAborted2(signal);
+          onBatch?.({ phrases: batch, translations: translatedBatch });
         }
         return translations;
       });
@@ -3973,6 +3975,98 @@
     return Boolean(ruby.querySelector("rt.katakana-terminator-rt, rt[data-rt]"));
   }
 
+  // src/viewport-scheduler.js
+  var ViewportScheduler = class {
+    constructor({ document: document2, onReady, margin = 300 }) {
+      this.window = document2.defaultView;
+      this.margin = margin;
+      this.pending = /* @__PURE__ */ new Map();
+      this.targets = /* @__PURE__ */ new Map();
+      this.ready = /* @__PURE__ */ new Set();
+      this.active = true;
+      const Observer = this.window?.IntersectionObserver;
+      this.observer = typeof Observer === "function" ? new Observer((entries) => {
+        if (!this.active) {
+          return;
+        }
+        for (const entry of entries) {
+          for (const record of this.targets.get(entry.target) ?? []) {
+            if (entry.isIntersecting) {
+              this.ready.add(record);
+            } else {
+              this.ready.delete(record);
+            }
+          }
+        }
+        if (this.ready.size > 0) {
+          onReady();
+        }
+      }, { rootMargin: `${margin}px` }) : null;
+    }
+    defer(record) {
+      const target = record.currentNodes[0]?.parentElement;
+      if (!this.active || !this.observer || !target) {
+        return false;
+      }
+      const rect = target.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0 || rect.bottom >= -this.margin && rect.top <= this.window.innerHeight + this.margin && rect.right >= -this.margin && rect.left <= this.window.innerWidth + this.margin) {
+        return false;
+      }
+      this.pending.set(record, target);
+      let records = this.targets.get(target);
+      if (!records) {
+        records = /* @__PURE__ */ new Set();
+        this.targets.set(target, records);
+        this.observer.observe(target);
+      }
+      records.add(record);
+      return true;
+    }
+    has(record) {
+      return this.pending.has(record);
+    }
+    get hasReady() {
+      return this.ready.size > 0;
+    }
+    get hasDeferred() {
+      return this.pending.size > 0;
+    }
+    takeReady() {
+      const record = this.ready.values().next().value;
+      if (record) {
+        this.forget(record);
+      }
+      return record;
+    }
+    takeBackground() {
+      const record = this.pending.keys().next().value;
+      if (record) {
+        this.forget(record);
+      }
+      return record;
+    }
+    forget(record) {
+      const target = this.pending.get(record);
+      this.pending.delete(record);
+      this.ready.delete(record);
+      const records = this.targets.get(target);
+      if (records) {
+        records.delete(record);
+        if (records.size === 0) {
+          this.targets.delete(target);
+          this.observer.unobserve(target);
+        }
+      }
+    }
+    stop() {
+      this.active = false;
+      this.observer?.disconnect();
+      this.pending.clear();
+      this.targets.clear();
+      this.ready.clear();
+    }
+  };
+
   // src/coordinator.js
   var AnnotationCoordinator = class {
     constructor({
@@ -4012,6 +4106,7 @@
       this.flushTimer = null;
       this.scanHandle = null;
       this.mutationObserver = null;
+      this.viewport = null;
       this.onVisibilityChange = () => this.#handleVisibilityChange();
     }
     enableKanji(runtime) {
@@ -4059,6 +4154,9 @@
       }
       this.#processRecord(record);
     }
+    continuePending() {
+      this.#scheduleNodeDrain();
+    }
     stop() {
       this.kanjiRuntime = null;
       this.katakanaRuntime = null;
@@ -4069,6 +4167,10 @@
         return;
       }
       this.active = true;
+      this.viewport = new ViewportScheduler({
+        document: this.document,
+        onReady: () => this.#scheduleNodeDrain()
+      });
       this.hidden = this.document.visibilityState === "hidden";
       this.document.addEventListener("visibilitychange", this.onVisibilityChange);
       if (this.MutationObserver) {
@@ -4093,6 +4195,8 @@
       this.document.removeEventListener("visibilitychange", this.onVisibilityChange);
       this.mutationObserver?.disconnect();
       this.mutationObserver = null;
+      this.viewport?.stop();
+      this.viewport = null;
       this.#cancelScheduledWork();
       this.pendingRoots.clear();
       this.scanJobs.length = 0;
@@ -4148,7 +4252,7 @@
           this.#discardDetachedOwnership(node);
         }
         for (const node of mutation.addedNodes) {
-          if (this.nodeRecords.has(node)) {
+          if (this.nodeRecords.has(node) && !this.viewport?.has(this.nodeRecords.get(node))) {
             continue;
           }
           if (node.nodeType === 1 && node.closest?.("[data-yomi-ruby-generated], [data-yomi-ruby-converted-rt]")) {
@@ -4216,9 +4320,19 @@
       this.scanJobs.push({ root, walker, next: root });
     }
     #processTextNode(node) {
+      const owned = this.nodeRecords.get(node);
+      if (owned) {
+        if (this.viewport?.has(owned)) {
+          this.viewport.forget(owned);
+          if (!this.viewport.defer(owned)) {
+            this.#activateDeferred(owned);
+          }
+        }
+        return;
+      }
       const text = node.textContent;
       const candidate = this.kanjiRuntime && new RegExp("\\p{Script=Han}", "u").test(text) || this.katakanaRuntime && findKatakanaMatches(text).length > 0;
-      if (!node?.isConnected || this.nodeRecords.has(node) || !candidate || shouldSkipTextNode(node, this.scanStyleCache)) {
+      if (!node?.isConnected || !candidate || shouldSkipTextNode(node, this.scanStyleCache)) {
         return;
       }
       const record = {
@@ -4230,10 +4344,12 @@
       };
       this.records.add(record);
       this.nodeRecords.set(node, record);
-      this.#processRecord(record);
+      if (!this.viewport?.defer(record)) {
+        this.#processRecord(record);
+      }
     }
     #scheduleNodeDrain() {
-      if (!this.active || this.hidden || this.scanHandle != null || this.scanJobs.length === 0) {
+      if (!this.active || this.hidden || this.scanHandle != null || !this.#hasRunnableWork()) {
         return;
       }
       if (this.requestIdleCallback) {
@@ -4253,9 +4369,25 @@
         return;
       }
       let processed = 0;
+      let backgroundProcessed = 0;
       const startedAt = this.now();
       this.scanStyleCache = /* @__PURE__ */ new WeakMap();
-      while (this.scanJobs.length > 0 && processed < this.scanBatchSize && (processed === 0 || this.now() - startedAt < this.scanBudgetMs) && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
+      while (this.#hasRunnableWork(backgroundProcessed > 0) && processed < this.scanBatchSize && backgroundProcessed < 32 && (processed === 0 || this.now() - startedAt < this.scanBudgetMs) && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
+        const ready = this.viewport?.takeReady();
+        if (ready) {
+          this.#activateDeferred(ready);
+          processed += 1;
+          continue;
+        }
+        if (this.scanJobs.length === 0) {
+          const record = this.viewport?.takeBackground();
+          if (record) {
+            this.#activateDeferred(record);
+            backgroundProcessed += 1;
+          }
+          processed += 1;
+          continue;
+        }
         const job = this.scanJobs[0];
         const node = job.next;
         if (!node || !job.root.isConnected) {
@@ -4282,6 +4414,16 @@
       }
       this.scanStyleCache = null;
       this.#scheduleNodeDrain();
+    }
+    #hasRunnableWork(continuingBackgroundBatch = false) {
+      return this.scanJobs.length > 0 || this.viewport?.hasReady || this.viewport?.hasDeferred && (continuingBackgroundBatch || !this.kanjiRuntime?.hasPendingWork?.() && !this.katakanaRuntime?.hasPendingWork?.());
+    }
+    #activateDeferred(record) {
+      if (!this.#recordIsCurrent(record) || shouldSkipTextNode(record.currentNodes[0])) {
+        this.#discardRecord(record);
+        return;
+      }
+      this.#processRecord(record);
     }
     #processRecord(record) {
       if (!this.#recordIsCurrent(record)) {
@@ -4310,8 +4452,11 @@
         return;
       }
       for (const record of [...this.records]) {
-        this.#processRecord(record);
+        if (!this.viewport?.has(record)) {
+          this.#processRecord(record);
+        }
       }
+      this.#scheduleNodeDrain();
     }
     #renderRecord(record, annotations) {
       const planKey = JSON.stringify(annotations.map((range) => [
@@ -4402,8 +4547,9 @@
       }
       this.kanjiRuntime?.forget(record);
       this.katakanaRuntime?.forget(record);
+      this.viewport?.forget(record);
       const parent = record.currentNodes[0]?.parentNode;
-      if (parent && record.currentNodes.every((node) => node.parentNode === parent) && record.currentNodes.map(sourceText).join("") === record.originalText) {
+      if (parent && record.planKey !== "[]" && record.currentNodes.every((node) => node.parentNode === parent) && record.currentNodes.map(sourceText).join("") === record.originalText) {
         const text = this.document.createTextNode(record.originalText);
         parent.insertBefore(text, record.currentNodes[0]);
         for (const node of record.currentNodes) {
@@ -5094,7 +5240,7 @@
       throw new TypeError("A GM_xmlhttpRequest adapter is required for katakana translation.");
     }
     return {
-      async translatePhrases(phrases, { signal } = {}) {
+      async translatePhrases(phrases, { signal, onBatch } = {}) {
         const uniquePhrases = [...new Set(phrases.filter((phrase) => typeof phrase === "string" && phrase))];
         if (uniquePhrases.length === 0) {
           return /* @__PURE__ */ new Map();
@@ -5113,9 +5259,14 @@
             signal,
             timeout: requestTimeoutMs
           });
-          for (const [original, translated] of parseTranslations2(responseText, batch)) {
+          const translatedBatch = parseTranslations2(responseText, batch);
+          for (const [original, translated] of translatedBatch) {
             translations.set(original, translated);
           }
+          if (signal?.aborted) {
+            throw abortError3();
+          }
+          onBatch?.({ phrases: batch, translations: translatedBatch });
         }
         return translations;
       }
@@ -5668,6 +5819,7 @@
   // src/kanji-runtime.js
   var KanjiRuntime = class {
     constructor({ mode, analyzerFactories, onPlanChanged = () => {
+    }, onIdle = () => {
     } }) {
       if (!analyzerFactories || typeof analyzerFactories[mode] !== "function") {
         throw new TypeError(`No kanji analyzer adapter is available for mode: ${mode}`);
@@ -5675,6 +5827,7 @@
       this.mode = mode;
       this.analyzerFactories = analyzerFactories;
       this.onPlanChanged = onPlanChanged;
+      this.onIdle = onIdle;
       this.active = false;
       this.paused = false;
       this.analyzer = null;
@@ -5760,6 +5913,9 @@
     stop() {
       this.disable();
     }
+    hasPendingWork() {
+      return this.processing || this.flushScheduled || this.queue.length > 0;
+    }
     #drain() {
       if (!this.active || this.paused || this.processing || this.queue.length === 0) {
         return;
@@ -5798,9 +5954,13 @@
       if (generation !== this.generation || !this.active || this.cache.get(text) !== entry || this.abortController?.signal.aborted) {
         return;
       }
+      const wasAsync = this.processing;
       this.#publish(entry, ranges);
       this.processing = false;
       this.#drain();
+      if (wasAsync && !this.hasPendingWork()) {
+        this.onIdle();
+      }
     }
     #scheduleBatch() {
       if (this.flushScheduled) {
@@ -5847,6 +6007,9 @@
       }
       this.processing = false;
       this.#drain();
+      if (!this.hasPendingWork()) {
+        this.onIdle();
+      }
     }
     #publish(entry, ranges) {
       entry.status = ranges.length > 0 ? "success" : "failure";
@@ -5895,6 +6058,7 @@
   // src/katakana-runtime.js
   var KatakanaRuntime = class {
     constructor({ provider, translatorFactories, onPlanChanged = () => {
+    }, onIdle = () => {
     } }) {
       if (!translatorFactories || typeof translatorFactories[provider] !== "function") {
         throw new TypeError(`No katakana translation adapter is available for provider: ${provider}`);
@@ -5902,6 +6066,7 @@
       this.provider = provider;
       this.translatorFactories = translatorFactories;
       this.onPlanChanged = onPlanChanged;
+      this.onIdle = onIdle;
       this.active = false;
       this.paused = false;
       this.translator = null;
@@ -6000,6 +6165,9 @@
         entry.waiters?.delete(record);
       }
     }
+    hasPendingWork() {
+      return this.processing || this.flushScheduled || this.queue.length > 0;
+    }
     stop() {
       this.disable();
     }
@@ -6008,7 +6176,11 @@
         return;
       }
       this.flushScheduled = true;
+      const generation = this.generation;
       queueMicrotask(() => {
+        if (generation !== this.generation) {
+          return;
+        }
         this.flushScheduled = false;
         this.#flush();
       });
@@ -6021,18 +6193,39 @@
       const generation = this.generation;
       const translator = this.translator;
       const signal = this.abortController?.signal;
+      const requested = new Set(phrases);
       this.processing = true;
-      void Promise.resolve().then(() => translator(phrases, { signal })).then(
+      let result;
+      try {
+        result = translator(phrases, {
+          signal,
+          onBatch: ({ phrases: batch, translations }) => {
+            if (generation === this.generation && this.active && !signal.aborted) {
+              this.#settle(batch.filter((phrase) => requested.has(phrase)), translations);
+            }
+          }
+        });
+      } catch {
+        this.#finish(phrases, generation, /* @__PURE__ */ new Map());
+        return;
+      }
+      void Promise.resolve(result).then(
         (translations) => this.#finish(phrases, generation, translations),
         () => this.#finish(phrases, generation, /* @__PURE__ */ new Map())
       );
     }
     #finish(phrases, generation, translations) {
-      this.processing = false;
       if (generation !== this.generation || !this.active || this.abortController?.signal.aborted) {
-        this.#scheduleFlush();
         return;
       }
+      this.#settle(phrases, translations);
+      this.processing = false;
+      this.#scheduleFlush();
+      if (!this.hasPendingWork()) {
+        this.onIdle();
+      }
+    }
+    #settle(phrases, translations) {
       const affected = /* @__PURE__ */ new Set();
       for (const phrase of phrases) {
         const entry = this.cache.get(phrase);
@@ -6050,7 +6243,6 @@
       for (const record of affected) {
         this.onPlanChanged(record);
       }
-      this.#scheduleFlush();
     }
     #clearCycle() {
       this.cache.clear();
@@ -6142,12 +6334,14 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
     const kanjiRuntime = new KanjiRuntime({
       mode: kanjiMode,
       analyzerFactories: kanjiAnalyzerFactories,
-      onPlanChanged: (record) => coordinator2.refresh(record)
+      onPlanChanged: (record) => coordinator2.refresh(record),
+      onIdle: () => coordinator2.continuePending()
     });
     const katakanaRuntime = new KatakanaRuntime({
       provider: translationProvider,
       translatorFactories: resolvedTranslationFactories,
-      onPlanChanged: (record) => coordinator2.refresh(record)
+      onPlanChanged: (record) => coordinator2.refresh(record),
+      onIdle: () => coordinator2.continuePending()
     });
     let kanjiActive = false;
     let kanjiDesired = false;

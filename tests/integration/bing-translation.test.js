@@ -571,7 +571,30 @@ test("aborts the active GM request, rejects late results, and allows a later ini
   assert.deepEqual(await second, new Map([["テレビ", "Television"]]));
 });
 
-async function initializedTranslation(phrases = ["ゲーム"], clientOptions = {}) {
+test("publishes completed Bing batches before a later 401 refresh and failure", async () => {
+  const published = [];
+  const { requests, translating } = await initializedTranslation(
+    ["ゲーム", "テレビ"], { maxPhrasesPerRequest: 1 },
+    { onBatch: (batch) => published.push(batch) },
+  );
+  respond(requests[1], { status: 200, responseText: validTranslation("Game") });
+  await waitFor(() => requests.length === 3);
+  assert.deepEqual(published, [{ phrases: ["ゲーム"], translations: new Map([["ゲーム", "Game"]]) }]);
+  assert.equal(new URLSearchParams(requests[2].data).get("text"), "テレビ");
+  respond(requests[2], { status: 401, responseText: "expired" });
+  await waitFor(() => requests.length === 4);
+  assert.equal(requests[3].method, "GET");
+  respond(requests[3], { status: 200, responseText: translatorHtml() });
+  await waitFor(() => requests.length === 5);
+  assert.equal(new URLSearchParams(requests[4].data).get("text"), "テレビ");
+  respond(requests[4], { status: 429, responseText: "limited" });
+  await assert.rejects(translating);
+  assert.equal(published.length, 1, "failure never revokes or republishes the successful batch");
+  assert.deepEqual(requests.filter((request) => request.method === "POST")
+    .map((request) => new URLSearchParams(request.data).get("text")), ["ゲーム", "テレビ", "テレビ"]);
+});
+
+async function initializedTranslation(phrases = ["ゲーム"], clientOptions = {}, translationOptions = {}) {
   const requests = [];
   const client = createBingTranslationClient({
     gmRequest(options) {
@@ -582,7 +605,7 @@ async function initializedTranslation(phrases = ["ゲーム"], clientOptions = {
     minimumIntervalMs: 0,
     ...clientOptions,
   });
-  const translating = client.translatePhrases(phrases);
+  const translating = client.translatePhrases(phrases, translationOptions);
   await waitFor(() => requests.length === 1);
   requests[0].onload({
     status: 200,

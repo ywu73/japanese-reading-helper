@@ -1,13 +1,14 @@
 import { findKatakanaMatches } from "./katakana.js";
 
 export class KatakanaRuntime {
-  constructor({ provider, translatorFactories, onPlanChanged = () => {} }) {
+  constructor({ provider, translatorFactories, onPlanChanged = () => {}, onIdle = () => {} }) {
     if (!translatorFactories || typeof translatorFactories[provider] !== "function") {
       throw new TypeError(`No katakana translation adapter is available for provider: ${provider}`);
     }
     this.provider = provider;
     this.translatorFactories = translatorFactories;
     this.onPlanChanged = onPlanChanged;
+    this.onIdle = onIdle;
     this.active = false;
     this.paused = false;
     this.translator = null;
@@ -120,6 +121,10 @@ export class KatakanaRuntime {
     }
   }
 
+  hasPendingWork() {
+    return this.processing || this.flushScheduled || this.queue.length > 0;
+  }
+
   stop() {
     this.disable();
   }
@@ -135,7 +140,11 @@ export class KatakanaRuntime {
       return;
     }
     this.flushScheduled = true;
+    const generation = this.generation;
     queueMicrotask(() => {
+      if (generation !== this.generation) {
+        return;
+      }
       this.flushScheduled = false;
       this.#flush();
     });
@@ -149,19 +158,42 @@ export class KatakanaRuntime {
     const generation = this.generation;
     const translator = this.translator;
     const signal = this.abortController?.signal;
+    const requested = new Set(phrases);
     this.processing = true;
-    void Promise.resolve().then(() => translator(phrases, { signal })).then(
+    let result;
+    try {
+      result = translator(phrases, {
+        signal,
+        onBatch: ({ phrases: batch, translations }) => {
+          if (generation === this.generation && this.active && !signal.aborted) {
+            this.#settle(batch.filter((phrase) => requested.has(phrase)), translations);
+          }
+        },
+      });
+    } catch {
+      this.#finish(phrases, generation, new Map());
+      return;
+    }
+    void Promise.resolve(result).then(
       (translations) => this.#finish(phrases, generation, translations),
       () => this.#finish(phrases, generation, new Map()),
     );
   }
 
   #finish(phrases, generation, translations) {
-    this.processing = false;
     if (generation !== this.generation || !this.active || this.abortController?.signal.aborted) {
-      this.#scheduleFlush();
       return;
     }
+    // Already published batches remain successful if a later request fails.
+    this.#settle(phrases, translations);
+    this.processing = false;
+    this.#scheduleFlush();
+    if (!this.hasPendingWork()) {
+      this.onIdle();
+    }
+  }
+
+  #settle(phrases, translations) {
     const affected = new Set();
     for (const phrase of phrases) {
       const entry = this.cache.get(phrase);
@@ -181,7 +213,6 @@ export class KatakanaRuntime {
     for (const record of affected) {
       this.onPlanChanged(record);
     }
-    this.#scheduleFlush();
   }
 
   #clearCycle() {

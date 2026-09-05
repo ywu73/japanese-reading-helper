@@ -101,6 +101,7 @@ function coordinatorHarness() {
     enableKatakana(runtime) { this.katakana.push(runtime); },
     disableKatakana() { this.katakanaDisables += 1; },
     refresh() {},
+    continuePending() {},
     stop() {},
   };
 }

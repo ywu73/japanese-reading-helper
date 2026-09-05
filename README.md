@@ -44,6 +44,8 @@ network capture, update, real-site, or publication gates.**
   an encoded candidate-payload budget of 1800 characters, a minimum 250 ms
   inter-batch interval, and an 8-second timeout. Google uses newline-joined `q`;
   Bing uses a newline-joined `text` form body.
+- Displays each validated katakana batch as it completes. A later batch failure
+  preserves annotations from earlier successful batches.
 - Defaults once to Bing for the Simplified-Chinese interface and Google for
   every other interface locale; a saved or manually selected provider wins.
 - Never silently falls back across providers. A failure preserves source text
@@ -154,9 +156,13 @@ See [Security and privacy boundary](docs/security-boundary.md), [Network audit](
   temporary configuration, and setting lifecycles. They may contact the same
   selected provider concurrently; no mutable request state is shared.
 - The DOM coordinator is the sole ruby owner. It uses an event-driven roughly
-  500 ms mutation window and cooperative ordered chunks, never a permanent
-  interval or viewport eligibility gate. Hidden tabs start no new work; becoming
-  visible triggers a rescan of the currently connected DOM.
+  500 ms mutation window and cooperative chunks, with no permanent interval.
+  A separate viewport scheduler prioritizes text whose parent is within the
+  viewport or its 300 px margin. When foreground requests settle, offscreen text
+  is processed in groups of up to 32 records; it remains eligible even if
+  never scrolled into view. Without viewport observation, ordinary ordered
+  scanning is used. Hidden tabs start no new work; becoming visible triggers a
+  rescan of the currently connected DOM.
 - Queued work and observers stop on disable; stale or aborted asynchronous
   results cannot re-annotate the page.
 

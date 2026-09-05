@@ -14,7 +14,7 @@ export function createGoogleTranslationClient({
   }
 
   return {
-    async translatePhrases(phrases, { signal } = {}) {
+    async translatePhrases(phrases, { signal, onBatch } = {}) {
       const uniquePhrases = [...new Set(phrases.filter((phrase) => typeof phrase === "string" && phrase))];
       if (uniquePhrases.length === 0) {
         return new Map();
@@ -33,9 +33,14 @@ export function createGoogleTranslationClient({
           signal,
           timeout: requestTimeoutMs,
         });
-        for (const [original, translated] of parseTranslations(responseText, batch)) {
+        const translatedBatch = parseTranslations(responseText, batch);
+        for (const [original, translated] of translatedBatch) {
           translations.set(original, translated);
         }
+        if (signal?.aborted) {
+          throw abortError();
+        }
+        onBatch?.({ phrases: batch, translations: translatedBatch });
       }
       return translations;
     },

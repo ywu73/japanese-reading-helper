@@ -33,11 +33,13 @@ export function createYomiRubySession({
     mode: kanjiMode,
     analyzerFactories: kanjiAnalyzerFactories,
     onPlanChanged: (record) => coordinator.refresh(record),
+    onIdle: () => coordinator.continuePending(),
   });
   const katakanaRuntime = new KatakanaRuntime({
     provider: translationProvider,
     translatorFactories: resolvedTranslationFactories,
     onPlanChanged: (record) => coordinator.refresh(record),
+    onIdle: () => coordinator.continuePending(),
   });
   let kanjiActive = false;
   let kanjiDesired = false;
