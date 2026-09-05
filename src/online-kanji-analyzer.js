@@ -14,34 +14,49 @@ export function createOnlineKanjiAnalyzer({
   const readingCache = new Map();
   const pendingReadings = new Map();
 
-  return async function analyzeOnlineKanji(text, { signal } = {}) {
+  const analyze = async (text, options) => (await analyzeBatch([text], options))[0];
+  analyze.analyzeBatch = analyzeBatch;
+  return analyze;
+
+  async function analyzeBatch(texts, { signal } = {}) {
+    // Segment each node independently: joining source text could change word
+    // boundaries. Only the resulting exact words are shared across nodes.
+    const prepared = texts.map(prepareText);
+    const candidates = [...new Set(prepared.flatMap(({ candidates }) => candidates))];
+    let readings = new Map();
+    if (candidates.length > 0) {
+      try {
+        readings = await resolveReadings(candidates, signal);
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          throw error;
+        }
+      }
+    }
+    return prepared.map(({ text, entries }) => renderSegments(text, entries, readings));
+  }
+
+  function prepareText(text) {
     if (typeof text !== "string" || text.length === 0) {
-      return [];
+      return { text: "", entries: [], candidates: [] };
+    }
+    if (!HAS_KANJI.test(text)) {
+      return { text, entries: [], candidates: [] };
     }
     const entries = [...segmenter.segment(text)];
     if (!segmentsExactlyCoverText(text, entries)) {
-      return [{ type: "text", text }];
+      return { text, entries: [], candidates: [] };
     }
     const candidates = [...new Set(entries
       .filter(({ segment, isWordLike }) => isWordLike === true && HAS_KANJI.test(segment))
       .map(({ segment }) => segment))];
-    if (candidates.length === 0) {
-      return [{ type: "text", text }];
-    }
+    return { text, entries, candidates };
+  }
 
-    let readings;
-    try {
-      readings = await resolveReadings(candidates, signal);
-    } catch (error) {
-      if (error?.name === "AbortError") {
-        throw error;
-      }
-      return [{ type: "text", text }];
+  function renderSegments(text, entries, readings) {
+    if (!entries.length) {
+      return text ? [{ type: "text", text }] : [];
     }
-    if (!(readings instanceof Map)) {
-      return [{ type: "text", text }];
-    }
-
     const result = [];
     for (const { segment, isWordLike } of entries) {
       const romaji = isWordLike === true && HAS_KANJI.test(segment)
@@ -54,7 +69,7 @@ export function createOnlineKanjiAnalyzer({
       }
     }
     return result;
-  };
+  }
 
   async function resolveReadings(candidates, signal) {
     const missing = candidates.filter((word) => (

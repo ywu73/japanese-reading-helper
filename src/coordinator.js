@@ -3,6 +3,7 @@ import {
   restoreConvertedKanaRuby,
   shouldSkipTextNode,
 } from "./dom.js";
+import { findKatakanaMatches } from "./katakana.js";
 
 export class AnnotationCoordinator {
   constructor({
@@ -14,6 +15,8 @@ export class AnnotationCoordinator {
     cancelIdleCallback = document?.defaultView?.cancelIdleCallback?.bind(document.defaultView),
     flushDelayMs = 500,
     scanBatchSize = 100,
+    scanBudgetMs = 8,
+    now = () => performance.now(),
   }) {
     if (!document) {
       throw new TypeError("An AnnotationCoordinator requires a document.");
@@ -26,6 +29,8 @@ export class AnnotationCoordinator {
     this.cancelIdleCallback = cancelIdleCallback;
     this.flushDelayMs = flushDelayMs;
     this.scanBatchSize = scanBatchSize;
+    this.scanBudgetMs = scanBudgetMs;
+    this.now = now;
     this.kanjiRuntime = null;
     this.katakanaRuntime = null;
     this.active = false;
@@ -33,8 +38,8 @@ export class AnnotationCoordinator {
     this.records = new Set();
     this.nodeRecords = new WeakMap();
     this.pendingRoots = new Set();
-    this.pendingNodes = [];
-    this.pendingNodeSet = new Set();
+    this.scanJobs = [];
+    this.scanStyleCache = null;
     this.flushTimer = null;
     this.scanHandle = null;
     this.mutationObserver = null;
@@ -45,7 +50,6 @@ export class AnnotationCoordinator {
     assertRuntime(runtime, "Kanji");
     this.kanjiRuntime = runtime;
     this.#ensureActive();
-    convertExistingKanaRuby(this.document);
     this.#reprocessAll();
     this.#queueRoot(this.document.body ?? this.document.documentElement, { immediate: true });
   }
@@ -130,14 +134,13 @@ export class AnnotationCoordinator {
     this.mutationObserver = null;
     this.#cancelScheduledWork();
     this.pendingRoots.clear();
-    this.pendingNodes.length = 0;
-    this.pendingNodeSet.clear();
+    this.scanJobs.length = 0;
     for (const record of this.records) {
       this.#restoreRecord(record);
     }
     this.records.clear();
+    this.nodeRecords = new WeakMap();
     restoreConvertedKanaRuby(this.document);
-    this.document.normalize?.();
   }
 
   #handleVisibilityChange() {
@@ -174,10 +177,23 @@ export class AnnotationCoordinator {
         this.pendingRoots.add(mutation.target);
         continue;
       }
+      if ([...mutation.removedNodes].some((node) => node.isConnected)) {
+        // A moved cursor can still be inside its root but now lie after unvisited
+        // siblings. Resume affected scans from the root in the new DOM order.
+        for (const job of this.scanJobs) {
+          if (job.root.contains(mutation.target)) {
+            job.walker.currentNode = job.root;
+            job.next = job.root;
+          }
+        }
+      }
       for (const node of mutation.removedNodes) {
         this.#discardDetachedOwnership(node);
       }
       for (const node of mutation.addedNodes) {
+        if (this.nodeRecords.has(node)) {
+          continue;
+        }
         if (
           node.nodeType === 1
           && node.closest?.("[data-yomi-ruby-generated], [data-yomi-ruby-converted-rt]")
@@ -203,7 +219,7 @@ export class AnnotationCoordinator {
   }
 
   #scheduleFlush() {
-    if (!this.active || this.hidden || this.flushTimer != null) {
+    if (!this.active || this.hidden || this.flushTimer != null || this.pendingRoots.size === 0) {
       return;
     }
     this.flushTimer = this.setTimer(() => {
@@ -216,10 +232,22 @@ export class AnnotationCoordinator {
     if (!this.active || this.hidden) {
       return;
     }
-    const roots = [...this.pendingRoots];
-    this.pendingRoots.clear();
+    const roots = this.pendingRoots;
+    this.pendingRoots = new Set();
     for (const root of roots) {
-      this.#collectTextNodes(root);
+      if (!root.isConnected) {
+        continue;
+      }
+      let covered = false;
+      for (let parent = root.parentNode; parent; parent = parent.parentNode) {
+        if (roots.has(parent)) {
+          covered = true;
+          break;
+        }
+      }
+      if (!covered) {
+        this.#collectTextNodes(root);
+      }
     }
     this.#scheduleNodeDrain();
   }
@@ -228,43 +256,42 @@ export class AnnotationCoordinator {
     if (!root?.isConnected) {
       return;
     }
-    if (root.nodeType === 3) {
-      this.#enqueueTextNode(root);
+    if (![1, 3, 9, 11].includes(root.nodeType)) {
       return;
-    }
-    if (![1, 9, 11].includes(root.nodeType)) {
-      return;
-    }
-    if (this.kanjiRuntime) {
-      convertExistingKanaRuby(root);
     }
     const walker = this.document.createTreeWalker(
       root,
-      this.document.defaultView.NodeFilter.SHOW_TEXT,
-      { acceptNode: (node) => shouldSkipTextNode(node) || this.nodeRecords.has(node)
-        ? this.document.defaultView.NodeFilter.FILTER_REJECT
-        : this.document.defaultView.NodeFilter.FILTER_ACCEPT },
+      this.document.defaultView.NodeFilter.SHOW_ELEMENT | this.document.defaultView.NodeFilter.SHOW_TEXT,
     );
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      this.#enqueueTextNode(node);
-    }
+    this.scanJobs.push({ root, walker, next: root });
   }
 
-  #enqueueTextNode(node) {
+  #processTextNode(node) {
+    const text = node.textContent;
+    const candidate = (this.kanjiRuntime && /\p{Script=Han}/u.test(text))
+      || (this.katakanaRuntime && findKatakanaMatches(text).length > 0);
     if (
       !node?.isConnected
       || this.nodeRecords.has(node)
-      || this.pendingNodeSet.has(node)
-      || shouldSkipTextNode(node)
+      || !candidate
+      || shouldSkipTextNode(node, this.scanStyleCache)
     ) {
       return;
     }
-    this.pendingNodeSet.add(node);
-    this.pendingNodes.push(node);
+    const record = {
+      text,
+      originalText: text,
+      currentNodes: [node],
+      planKey: "[]",
+      valid: true,
+    };
+    this.records.add(record);
+    this.nodeRecords.set(node, record);
+    this.#processRecord(record);
   }
 
   #scheduleNodeDrain() {
-    if (!this.active || this.hidden || this.scanHandle != null || this.pendingNodes.length === 0) {
+    if (!this.active || this.hidden || this.scanHandle != null || this.scanJobs.length === 0) {
       return;
     }
     if (this.requestIdleCallback) {
@@ -285,27 +312,43 @@ export class AnnotationCoordinator {
       return;
     }
     let processed = 0;
+    const startedAt = this.now();
+    this.scanStyleCache = new WeakMap();
     while (
-      this.pendingNodes.length > 0
+      this.scanJobs.length > 0
       && processed < this.scanBatchSize
+      && (processed === 0 || this.now() - startedAt < this.scanBudgetMs)
       && (deadline.didTimeout || deadline.timeRemaining() > 1)
     ) {
-      const node = this.pendingNodes.shift();
-      this.pendingNodeSet.delete(node);
-      if (node.isConnected && !this.nodeRecords.has(node) && !shouldSkipTextNode(node)) {
-        const record = {
-          text: node.textContent,
-          originalText: node.textContent,
-          currentNodes: [node],
-          planKey: null,
-          valid: true,
-        };
-        this.records.add(record);
-        this.nodeRecords.set(node, record);
-        this.#processRecord(record);
+      const job = this.scanJobs[0];
+      const node = job.next;
+      if (!node || !job.root.isConnected) {
+        this.scanJobs.shift();
+        processed += 1;
+        continue;
+      }
+      if (!job.root.contains(node)) {
+        // A removed cursor must not strand its still-connected later siblings.
+        // Restart this root; existing ownership suppresses duplicate analysis.
+        job.walker.currentNode = job.root;
+        job.next = job.root;
+        processed += 1;
+        continue;
+      }
+      // Advance before rendering can replace the current text node. If a page
+      // removes the saved cursor between slices, restart its connected root.
+      job.walker.currentNode = node;
+      job.next = job.walker.nextNode();
+      if (node.nodeType === 3) {
+        this.#processTextNode(node);
+      } else if (this.kanjiRuntime && node.nodeName === "RUBY") {
+        if (convertExistingKanaRuby(node, { descendants: false })) {
+          this.scanStyleCache = new WeakMap();
+        }
       }
       processed += 1;
     }
+    this.scanStyleCache = null;
     this.#scheduleNodeDrain();
   }
 
@@ -371,6 +414,7 @@ export class AnnotationCoordinator {
       fragment.append(this.document.createTextNode(record.originalText));
     }
     const nextNodes = [...fragment.childNodes];
+    this.scanStyleCache = new WeakMap();
     parent.insertBefore(fragment, record.currentNodes[0]);
     for (const node of record.currentNodes) {
       node.remove();
@@ -411,6 +455,9 @@ export class AnnotationCoordinator {
 
   #restoreRecord(record) {
     if (!this.#recordIsCurrent(record)) {
+      return;
+    }
+    if (record.planKey === "[]") {
       return;
     }
     const parent = record.currentNodes[0].parentNode;

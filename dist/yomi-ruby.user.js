@@ -479,9 +479,9 @@
     mod
   ));
 
-  // node_modules/kuromoji/src/viterbi/ViterbiNode.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiNode.js
   var require_ViterbiNode = __commonJS({
-    "node_modules/kuromoji/src/viterbi/ViterbiNode.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiNode.js"(exports, module) {
       "use strict";
       function ViterbiNode(node_name, node_cost, start_pos, length, type, left_id, right_id, surface_form) {
         this.name = node_name;
@@ -503,9 +503,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/viterbi/ViterbiLattice.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiLattice.js
   var require_ViterbiLattice = __commonJS({
-    "node_modules/kuromoji/src/viterbi/ViterbiLattice.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiLattice.js"(exports, module) {
       "use strict";
       var ViterbiNode = require_ViterbiNode();
       function ViterbiLattice() {
@@ -534,9 +534,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/util/SurrogateAwareString.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/util/SurrogateAwareString.js
   var require_SurrogateAwareString = __commonJS({
-    "node_modules/kuromoji/src/util/SurrogateAwareString.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/util/SurrogateAwareString.js"(exports, module) {
       "use strict";
       function SurrogateAwareString(str) {
         this.str = str;
@@ -598,9 +598,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/viterbi/ViterbiBuilder.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiBuilder.js
   var require_ViterbiBuilder = __commonJS({
-    "node_modules/kuromoji/src/viterbi/ViterbiBuilder.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiBuilder.js"(exports, module) {
       "use strict";
       var ViterbiNode = require_ViterbiNode();
       var ViterbiLattice = require_ViterbiLattice();
@@ -661,9 +661,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/viterbi/ViterbiSearcher.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiSearcher.js
   var require_ViterbiSearcher = __commonJS({
-    "node_modules/kuromoji/src/viterbi/ViterbiSearcher.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiSearcher.js"(exports, module) {
       "use strict";
       function ViterbiSearcher(connection_costs) {
         this.connection_costs = connection_costs;
@@ -728,9 +728,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/util/IpadicFormatter.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/util/IpadicFormatter.js
   var require_IpadicFormatter = __commonJS({
-    "node_modules/kuromoji/src/util/IpadicFormatter.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/util/IpadicFormatter.js"(exports, module) {
       "use strict";
       function IpadicFormatter() {
       }
@@ -770,9 +770,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/Tokenizer.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/Tokenizer.js
   var require_Tokenizer = __commonJS({
-    "node_modules/kuromoji/src/Tokenizer.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/Tokenizer.js"(exports, module) {
       "use strict";
       var ViterbiBuilder = require_ViterbiBuilder();
       var ViterbiSearcher = require_ViterbiSearcher();
@@ -854,9 +854,9 @@
     }
   });
 
-  // node_modules/doublearray/doublearray.js
+  // ../../yomi-ruby/node_modules/doublearray/doublearray.js
   var require_doublearray = __commonJS({
-    "node_modules/doublearray/doublearray.js"(exports, module) {
+    "../../yomi-ruby/node_modules/doublearray/doublearray.js"(exports, module) {
       (function() {
         "use strict";
         var TERM_CHAR = "\0", TERM_CODE = 0, ROOT_ID = 0, NOT_FOUND = -1, BASE_SIGNED = true, CHECK_SIGNED = true, BASE_BYTES = 4, CHECK_BYTES = 4, MEMORY_EXPAND_RATIO = 2;
@@ -1352,9 +1352,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/util/ByteBuffer.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/util/ByteBuffer.js
   var require_ByteBuffer = __commonJS({
-    "node_modules/kuromoji/src/util/ByteBuffer.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/util/ByteBuffer.js"(exports, module) {
       "use strict";
       var stringToUtf8Bytes = function(str) {
         var bytes = new Uint8Array(str.length * 4);
@@ -1555,9 +1555,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/dict/TokenInfoDictionary.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/dict/TokenInfoDictionary.js
   var require_TokenInfoDictionary = __commonJS({
-    "node_modules/kuromoji/src/dict/TokenInfoDictionary.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/dict/TokenInfoDictionary.js"(exports, module) {
       "use strict";
       var ByteBuffer = require_ByteBuffer();
       function TokenInfoDictionary() {
@@ -1658,9 +1658,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/dict/ConnectionCosts.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/dict/ConnectionCosts.js
   var require_ConnectionCosts = __commonJS({
-    "node_modules/kuromoji/src/dict/ConnectionCosts.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/dict/ConnectionCosts.js"(exports, module) {
       "use strict";
       function ConnectionCosts(forward_dimension, backward_dimension) {
         this.forward_dimension = forward_dimension;
@@ -1692,9 +1692,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/dict/CharacterClass.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/dict/CharacterClass.js
   var require_CharacterClass = __commonJS({
-    "node_modules/kuromoji/src/dict/CharacterClass.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/dict/CharacterClass.js"(exports, module) {
       "use strict";
       function CharacterClass(class_id, class_name, is_always_invoke, is_grouping, max_length) {
         this.class_id = class_id;
@@ -1707,9 +1707,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/dict/InvokeDefinitionMap.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/dict/InvokeDefinitionMap.js
   var require_InvokeDefinitionMap = __commonJS({
-    "node_modules/kuromoji/src/dict/InvokeDefinitionMap.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/dict/InvokeDefinitionMap.js"(exports, module) {
       "use strict";
       var ByteBuffer = require_ByteBuffer();
       var CharacterClass = require_CharacterClass();
@@ -1768,9 +1768,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/dict/CharacterDefinition.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/dict/CharacterDefinition.js
   var require_CharacterDefinition = __commonJS({
-    "node_modules/kuromoji/src/dict/CharacterDefinition.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/dict/CharacterDefinition.js"(exports, module) {
       "use strict";
       var InvokeDefinitionMap = require_InvokeDefinitionMap();
       var CharacterClass = require_CharacterClass();
@@ -1904,9 +1904,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/dict/UnknownDictionary.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/dict/UnknownDictionary.js
   var require_UnknownDictionary = __commonJS({
-    "node_modules/kuromoji/src/dict/UnknownDictionary.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/dict/UnknownDictionary.js"(exports, module) {
       "use strict";
       var TokenInfoDictionary = require_TokenInfoDictionary();
       var CharacterDefinition = require_CharacterDefinition();
@@ -1938,9 +1938,9 @@
     }
   });
 
-  // node_modules/kuromoji/src/dict/DynamicDictionaries.js
+  // ../../yomi-ruby/node_modules/kuromoji/src/dict/DynamicDictionaries.js
   var require_DynamicDictionaries = __commonJS({
-    "node_modules/kuromoji/src/dict/DynamicDictionaries.js"(exports, module) {
+    "../../yomi-ruby/node_modules/kuromoji/src/dict/DynamicDictionaries.js"(exports, module) {
       "use strict";
       var doublearray = require_doublearray();
       var TokenInfoDictionary = require_TokenInfoDictionary();
@@ -1992,9 +1992,9 @@
     }
   });
 
-  // node_modules/zlibjs/bin/gunzip.min.js
+  // ../../yomi-ruby/node_modules/zlibjs/bin/gunzip.min.js
   var require_gunzip_min = __commonJS({
-    "node_modules/zlibjs/bin/gunzip.min.js"(exports) {
+    "../../yomi-ruby/node_modules/zlibjs/bin/gunzip.min.js"(exports) {
       (function() {
         "use strict";
         function n(e) {
@@ -3873,38 +3873,55 @@
   ]);
   var convertedRubySnapshots = /* @__PURE__ */ new WeakMap();
   var KANA_ONLY2 = /^[\u3041-\u3096\u309d\u309e\u30a1-\u30fa\u30fd\u30feー・\s]+$/u;
-  function shouldSkipTextNode(node) {
+  function shouldSkipTextNode(node, checkedElements) {
     if (!node || node.nodeType !== 3 || !node.parentElement || !node.textContent.trim()) {
       return true;
     }
+    const visited = [];
+    let skip = false;
     for (let element = node.parentElement; element; element = element.parentElement) {
+      if (checkedElements?.has(element)) {
+        skip = checkedElements.get(element);
+        break;
+      }
+      visited.push(element);
       if (BLOCKED_TAGS.has(element.tagName)) {
-        return true;
+        skip = true;
+        break;
       }
       if (element.hasAttribute("data-yomi-ruby-generated") || element.hasAttribute("data-yomi-ruby-converted-rt") || element.hasAttribute("data-yomi-ruby-status")) {
-        return true;
+        skip = true;
+        break;
       }
       if (element.hidden || element.hasAttribute("inert") || element.getAttribute("aria-hidden") === "true") {
-        return true;
+        skip = true;
+        break;
       }
       const editable = element.getAttribute("contenteditable");
       if (editable != null && editable.toLowerCase() !== "false") {
-        return true;
+        skip = true;
+        break;
       }
       const style = element.ownerDocument.defaultView?.getComputedStyle?.(element);
       if (style?.display === "none" || style?.visibility === "hidden" || style?.visibility === "collapse") {
-        return true;
+        skip = true;
+        break;
       }
     }
-    return false;
+    for (const element of visited) {
+      checkedElements?.set(element, skip);
+    }
+    return skip;
   }
-  function convertExistingKanaRuby(root) {
+  function convertExistingKanaRuby(root, { descendants = true } = {}) {
     let converted = 0;
     const rubyElements = [];
     if (root.matches?.("ruby:not([data-yomi-ruby-generated])")) {
       rubyElements.push(root);
     }
-    rubyElements.push(...root.querySelectorAll("ruby:not([data-yomi-ruby-generated])"));
+    if (descendants) {
+      rubyElements.push(...root.querySelectorAll("ruby:not([data-yomi-ruby-generated])"));
+    }
     for (const ruby of rubyElements) {
       if (isKatakanaTerminatorRuby(ruby)) {
         continue;
@@ -3966,7 +3983,9 @@
       requestIdleCallback = document2?.defaultView?.requestIdleCallback?.bind(document2.defaultView),
       cancelIdleCallback = document2?.defaultView?.cancelIdleCallback?.bind(document2.defaultView),
       flushDelayMs = 500,
-      scanBatchSize = 100
+      scanBatchSize = 100,
+      scanBudgetMs = 8,
+      now = () => performance.now()
     }) {
       if (!document2) {
         throw new TypeError("An AnnotationCoordinator requires a document.");
@@ -3979,6 +3998,8 @@
       this.cancelIdleCallback = cancelIdleCallback;
       this.flushDelayMs = flushDelayMs;
       this.scanBatchSize = scanBatchSize;
+      this.scanBudgetMs = scanBudgetMs;
+      this.now = now;
       this.kanjiRuntime = null;
       this.katakanaRuntime = null;
       this.active = false;
@@ -3986,8 +4007,8 @@
       this.records = /* @__PURE__ */ new Set();
       this.nodeRecords = /* @__PURE__ */ new WeakMap();
       this.pendingRoots = /* @__PURE__ */ new Set();
-      this.pendingNodes = [];
-      this.pendingNodeSet = /* @__PURE__ */ new Set();
+      this.scanJobs = [];
+      this.scanStyleCache = null;
       this.flushTimer = null;
       this.scanHandle = null;
       this.mutationObserver = null;
@@ -3997,7 +4018,6 @@
       assertRuntime(runtime, "Kanji");
       this.kanjiRuntime = runtime;
       this.#ensureActive();
-      convertExistingKanaRuby(this.document);
       this.#reprocessAll();
       this.#queueRoot(this.document.body ?? this.document.documentElement, { immediate: true });
     }
@@ -4075,14 +4095,13 @@
       this.mutationObserver = null;
       this.#cancelScheduledWork();
       this.pendingRoots.clear();
-      this.pendingNodes.length = 0;
-      this.pendingNodeSet.clear();
+      this.scanJobs.length = 0;
       for (const record of this.records) {
         this.#restoreRecord(record);
       }
       this.records.clear();
+      this.nodeRecords = /* @__PURE__ */ new WeakMap();
       restoreConvertedKanaRuby(this.document);
-      this.document.normalize?.();
     }
     #handleVisibilityChange() {
       if (!this.active) {
@@ -4117,10 +4136,21 @@
           this.pendingRoots.add(mutation.target);
           continue;
         }
+        if ([...mutation.removedNodes].some((node) => node.isConnected)) {
+          for (const job of this.scanJobs) {
+            if (job.root.contains(mutation.target)) {
+              job.walker.currentNode = job.root;
+              job.next = job.root;
+            }
+          }
+        }
         for (const node of mutation.removedNodes) {
           this.#discardDetachedOwnership(node);
         }
         for (const node of mutation.addedNodes) {
+          if (this.nodeRecords.has(node)) {
+            continue;
+          }
           if (node.nodeType === 1 && node.closest?.("[data-yomi-ruby-generated], [data-yomi-ruby-converted-rt]")) {
             continue;
           }
@@ -4141,7 +4171,7 @@
       }
     }
     #scheduleFlush() {
-      if (!this.active || this.hidden || this.flushTimer != null) {
+      if (!this.active || this.hidden || this.flushTimer != null || this.pendingRoots.size === 0) {
         return;
       }
       this.flushTimer = this.setTimer(() => {
@@ -4153,10 +4183,22 @@
       if (!this.active || this.hidden) {
         return;
       }
-      const roots = [...this.pendingRoots];
-      this.pendingRoots.clear();
+      const roots = this.pendingRoots;
+      this.pendingRoots = /* @__PURE__ */ new Set();
       for (const root of roots) {
-        this.#collectTextNodes(root);
+        if (!root.isConnected) {
+          continue;
+        }
+        let covered = false;
+        for (let parent = root.parentNode; parent; parent = parent.parentNode) {
+          if (roots.has(parent)) {
+            covered = true;
+            break;
+          }
+        }
+        if (!covered) {
+          this.#collectTextNodes(root);
+        }
       }
       this.#scheduleNodeDrain();
     }
@@ -4164,34 +4206,34 @@
       if (!root?.isConnected) {
         return;
       }
-      if (root.nodeType === 3) {
-        this.#enqueueTextNode(root);
+      if (![1, 3, 9, 11].includes(root.nodeType)) {
         return;
-      }
-      if (![1, 9, 11].includes(root.nodeType)) {
-        return;
-      }
-      if (this.kanjiRuntime) {
-        convertExistingKanaRuby(root);
       }
       const walker = this.document.createTreeWalker(
         root,
-        this.document.defaultView.NodeFilter.SHOW_TEXT,
-        { acceptNode: (node) => shouldSkipTextNode(node) || this.nodeRecords.has(node) ? this.document.defaultView.NodeFilter.FILTER_REJECT : this.document.defaultView.NodeFilter.FILTER_ACCEPT }
+        this.document.defaultView.NodeFilter.SHOW_ELEMENT | this.document.defaultView.NodeFilter.SHOW_TEXT
       );
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        this.#enqueueTextNode(node);
-      }
+      this.scanJobs.push({ root, walker, next: root });
     }
-    #enqueueTextNode(node) {
-      if (!node?.isConnected || this.nodeRecords.has(node) || this.pendingNodeSet.has(node) || shouldSkipTextNode(node)) {
+    #processTextNode(node) {
+      const text = node.textContent;
+      const candidate = this.kanjiRuntime && new RegExp("\\p{Script=Han}", "u").test(text) || this.katakanaRuntime && findKatakanaMatches(text).length > 0;
+      if (!node?.isConnected || this.nodeRecords.has(node) || !candidate || shouldSkipTextNode(node, this.scanStyleCache)) {
         return;
       }
-      this.pendingNodeSet.add(node);
-      this.pendingNodes.push(node);
+      const record = {
+        text,
+        originalText: text,
+        currentNodes: [node],
+        planKey: "[]",
+        valid: true
+      };
+      this.records.add(record);
+      this.nodeRecords.set(node, record);
+      this.#processRecord(record);
     }
     #scheduleNodeDrain() {
-      if (!this.active || this.hidden || this.scanHandle != null || this.pendingNodes.length === 0) {
+      if (!this.active || this.hidden || this.scanHandle != null || this.scanJobs.length === 0) {
         return;
       }
       if (this.requestIdleCallback) {
@@ -4211,23 +4253,34 @@
         return;
       }
       let processed = 0;
-      while (this.pendingNodes.length > 0 && processed < this.scanBatchSize && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
-        const node = this.pendingNodes.shift();
-        this.pendingNodeSet.delete(node);
-        if (node.isConnected && !this.nodeRecords.has(node) && !shouldSkipTextNode(node)) {
-          const record = {
-            text: node.textContent,
-            originalText: node.textContent,
-            currentNodes: [node],
-            planKey: null,
-            valid: true
-          };
-          this.records.add(record);
-          this.nodeRecords.set(node, record);
-          this.#processRecord(record);
+      const startedAt = this.now();
+      this.scanStyleCache = /* @__PURE__ */ new WeakMap();
+      while (this.scanJobs.length > 0 && processed < this.scanBatchSize && (processed === 0 || this.now() - startedAt < this.scanBudgetMs) && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
+        const job = this.scanJobs[0];
+        const node = job.next;
+        if (!node || !job.root.isConnected) {
+          this.scanJobs.shift();
+          processed += 1;
+          continue;
+        }
+        if (!job.root.contains(node)) {
+          job.walker.currentNode = job.root;
+          job.next = job.root;
+          processed += 1;
+          continue;
+        }
+        job.walker.currentNode = node;
+        job.next = job.walker.nextNode();
+        if (node.nodeType === 3) {
+          this.#processTextNode(node);
+        } else if (this.kanjiRuntime && node.nodeName === "RUBY") {
+          if (convertExistingKanaRuby(node, { descendants: false })) {
+            this.scanStyleCache = /* @__PURE__ */ new WeakMap();
+          }
         }
         processed += 1;
       }
+      this.scanStyleCache = null;
       this.#scheduleNodeDrain();
     }
     #processRecord(record) {
@@ -4296,6 +4349,7 @@
         fragment.append(this.document.createTextNode(record.originalText));
       }
       const nextNodes = [...fragment.childNodes];
+      this.scanStyleCache = /* @__PURE__ */ new WeakMap();
       parent.insertBefore(fragment, record.currentNodes[0]);
       for (const node of record.currentNodes) {
         node.remove();
@@ -4330,6 +4384,9 @@
     }
     #restoreRecord(record) {
       if (!this.#recordIsCurrent(record)) {
+        return;
+      }
+      if (record.planKey === "[]") {
         return;
       }
       const parent = record.currentNodes[0].parentNode;
@@ -5504,29 +5561,41 @@
     const segmenter = new Segmenter("ja", { granularity: "word" });
     const readingCache = /* @__PURE__ */ new Map();
     const pendingReadings = /* @__PURE__ */ new Map();
-    return async function analyzeOnlineKanji(text, { signal } = {}) {
+    const analyze = async (text, options) => (await analyzeBatch([text], options))[0];
+    analyze.analyzeBatch = analyzeBatch;
+    return analyze;
+    async function analyzeBatch(texts, { signal } = {}) {
+      const prepared = texts.map(prepareText);
+      const candidates = [...new Set(prepared.flatMap(({ candidates: candidates2 }) => candidates2))];
+      let readings = /* @__PURE__ */ new Map();
+      if (candidates.length > 0) {
+        try {
+          readings = await resolveReadings(candidates, signal);
+        } catch (error) {
+          if (error?.name === "AbortError") {
+            throw error;
+          }
+        }
+      }
+      return prepared.map(({ text, entries }) => renderSegments(text, entries, readings));
+    }
+    function prepareText(text) {
       if (typeof text !== "string" || text.length === 0) {
-        return [];
+        return { text: "", entries: [], candidates: [] };
+      }
+      if (!HAS_KANJI4.test(text)) {
+        return { text, entries: [], candidates: [] };
       }
       const entries = [...segmenter.segment(text)];
       if (!segmentsExactlyCoverText(text, entries)) {
-        return [{ type: "text", text }];
+        return { text, entries: [], candidates: [] };
       }
       const candidates = [...new Set(entries.filter(({ segment, isWordLike }) => isWordLike === true && HAS_KANJI4.test(segment)).map(({ segment }) => segment))];
-      if (candidates.length === 0) {
-        return [{ type: "text", text }];
-      }
-      let readings;
-      try {
-        readings = await resolveReadings(candidates, signal);
-      } catch (error) {
-        if (error?.name === "AbortError") {
-          throw error;
-        }
-        return [{ type: "text", text }];
-      }
-      if (!(readings instanceof Map)) {
-        return [{ type: "text", text }];
+      return { text, entries, candidates };
+    }
+    function renderSegments(text, entries, readings) {
+      if (!entries.length) {
+        return text ? [{ type: "text", text }] : [];
       }
       const result = [];
       for (const { segment, isWordLike } of entries) {
@@ -5538,7 +5607,7 @@
         }
       }
       return result;
-    };
+    }
     async function resolveReadings(candidates, signal) {
       const missing = candidates.filter((word) => !readingCache.has(word) && !pendingReadings.has(word));
       if (missing.length > 0) {
@@ -5614,6 +5683,7 @@
       this.cache = /* @__PURE__ */ new Map();
       this.queue = [];
       this.processing = false;
+      this.flushScheduled = false;
     }
     async enable() {
       if (this.active) {
@@ -5667,6 +5737,9 @@
       if (!this.active || typeof text !== "string" || text.length === 0) {
         return emptyPlan("inactive");
       }
+      if (!new RegExp("\\p{Script=Han}", "u").test(text)) {
+        return emptyPlan("success");
+      }
       let entry = this.cache.get(text);
       if (!entry) {
         entry = { status: "pending", ranges: [], waiters: /* @__PURE__ */ new Set() };
@@ -5689,6 +5762,10 @@
     }
     #drain() {
       if (!this.active || this.paused || this.processing || this.queue.length === 0) {
+        return;
+      }
+      if (typeof this.analyzer.analyzeBatch === "function") {
+        this.#scheduleBatch();
         return;
       }
       const text = this.queue.shift();
@@ -5718,11 +5795,60 @@
       );
     }
     #finish(text, entry, generation, ranges) {
-      this.processing = false;
       if (generation !== this.generation || !this.active || this.cache.get(text) !== entry || this.abortController?.signal.aborted) {
-        this.#drain();
         return;
       }
+      this.#publish(entry, ranges);
+      this.processing = false;
+      this.#drain();
+    }
+    #scheduleBatch() {
+      if (this.flushScheduled) {
+        return;
+      }
+      this.flushScheduled = true;
+      const generation = this.generation;
+      queueMicrotask(() => {
+        if (generation !== this.generation) {
+          return;
+        }
+        this.flushScheduled = false;
+        if (!this.active || this.paused || this.processing || this.queue.length === 0) {
+          return;
+        }
+        const texts = this.queue.splice(0, 32);
+        const entries = texts.map((text) => this.cache.get(text));
+        const analyzer = this.analyzer;
+        const signal = this.abortController.signal;
+        this.processing = true;
+        let result;
+        try {
+          result = analyzer.analyzeBatch(texts, { signal });
+        } catch {
+          this.#finishBatch(texts, entries, generation, []);
+          return;
+        }
+        void Promise.resolve(result).then(
+          (results) => this.#finishBatch(texts, entries, generation, results),
+          () => this.#finishBatch(texts, entries, generation, [])
+        );
+      });
+    }
+    #finishBatch(texts, entries, generation, results) {
+      if (generation !== this.generation || !this.active || this.abortController?.signal.aborted) {
+        return;
+      }
+      for (let index = 0; index < texts.length; index += 1) {
+        const text = texts[index];
+        const entry = entries[index];
+        if (this.cache.get(text) === entry) {
+          this.#publish(entry, annotationRanges(text, results?.[index]));
+        }
+      }
+      this.processing = false;
+      this.#drain();
+    }
+    #publish(entry, ranges) {
       entry.status = ranges.length > 0 ? "success" : "failure";
       entry.ranges = ranges;
       const waiters = [...entry.waiters];
@@ -5730,12 +5856,12 @@
       for (const record of waiters) {
         this.onPlanChanged(record);
       }
-      this.#drain();
     }
     #clearCycle() {
       this.cache.clear();
       this.queue.length = 0;
       this.processing = false;
+      this.flushScheduled = false;
     }
   };
   function annotationRanges(text, segments) {

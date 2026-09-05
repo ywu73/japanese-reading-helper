@@ -8,44 +8,63 @@ const BLOCKED_TAGS = new Set([
 const convertedRubySnapshots = new WeakMap();
 const KANA_ONLY = /^[\u3041-\u3096\u309d\u309e\u30a1-\u30fa\u30fd\u30feー・\s]+$/u;
 
-export function shouldSkipTextNode(node) {
+// Supply a fresh cache for each synchronous scan slice. Never retain computed
+// visibility across a yield or across our own DOM writes.
+export function shouldSkipTextNode(node, checkedElements) {
   if (!node || node.nodeType !== 3 || !node.parentElement || !node.textContent.trim()) {
     return true;
   }
 
+  const visited = [];
+  let skip = false;
   for (let element = node.parentElement; element; element = element.parentElement) {
+    if (checkedElements?.has(element)) {
+      skip = checkedElements.get(element);
+      break;
+    }
+    visited.push(element);
     if (BLOCKED_TAGS.has(element.tagName)) {
-      return true;
+      skip = true;
+      break;
     }
     if (
       element.hasAttribute("data-yomi-ruby-generated")
       || element.hasAttribute("data-yomi-ruby-converted-rt")
       || element.hasAttribute("data-yomi-ruby-status")
     ) {
-      return true;
+      skip = true;
+      break;
     }
     if (element.hidden || element.hasAttribute("inert") || element.getAttribute("aria-hidden") === "true") {
-      return true;
+      skip = true;
+      break;
     }
     const editable = element.getAttribute("contenteditable");
     if (editable != null && editable.toLowerCase() !== "false") {
-      return true;
+      skip = true;
+      break;
     }
     const style = element.ownerDocument.defaultView?.getComputedStyle?.(element);
     if (style?.display === "none" || style?.visibility === "hidden" || style?.visibility === "collapse") {
-      return true;
+      skip = true;
+      break;
     }
   }
-  return false;
+  for (const element of visited) {
+    checkedElements?.set(element, skip);
+  }
+  return skip;
 }
 
-export function convertExistingKanaRuby(root) {
+export function convertExistingKanaRuby(root, { descendants = true } = {}) {
   let converted = 0;
   const rubyElements = [];
   if (root.matches?.("ruby:not([data-yomi-ruby-generated])")) {
     rubyElements.push(root);
   }
-  rubyElements.push(...root.querySelectorAll("ruby:not([data-yomi-ruby-generated])"));
+  if (descendants) {
+    rubyElements.push(...root.querySelectorAll("ruby:not([data-yomi-ruby-generated])"));
+  }
   for (const ruby of rubyElements) {
     if (isKatakanaTerminatorRuby(ruby)) {
       continue;

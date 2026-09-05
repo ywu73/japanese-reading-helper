@@ -165,6 +165,7 @@ test("stopping a cooperative large-page scan cancels undispatched chunks", () =>
   const coordinator = new AnnotationCoordinator({
     document: dom.window.document,
     scanBatchSize: 10,
+    now: () => 0,
     setTimer(callback, delay) {
       timers.push({ callback, delay, cancelled: false });
       return timers.length;
@@ -176,10 +177,11 @@ test("stopping a cooperative large-page scan cancels undispatched chunks", () =>
     return { status: "success", ranges: [] };
   }));
   runNextTimer(timers);
-  assert.equal(seen.length, 10);
+  const processed = seen.length;
+  assert.ok(processed > 0 && processed < 10, "element traversal shares the chunk budget");
   coordinator.stop();
   runTimers(timers);
-  assert.equal(seen.length, 10);
+  assert.equal(seen.length, processed);
 });
 
 function immediateCoordinator(dom) {

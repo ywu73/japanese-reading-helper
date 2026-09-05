@@ -14,6 +14,7 @@ export class KanjiRuntime {
     this.cache = new Map();
     this.queue = [];
     this.processing = false;
+    this.flushScheduled = false;
   }
 
   async enable() {
@@ -73,6 +74,9 @@ export class KanjiRuntime {
     if (!this.active || typeof text !== "string" || text.length === 0) {
       return emptyPlan("inactive");
     }
+    if (!/\p{Script=Han}/u.test(text)) {
+      return emptyPlan("success");
+    }
     let entry = this.cache.get(text);
     if (!entry) {
       entry = { status: "pending", ranges: [], waiters: new Set() };
@@ -98,6 +102,10 @@ export class KanjiRuntime {
 
   #drain() {
     if (!this.active || this.paused || this.processing || this.queue.length === 0) {
+      return;
+    }
+    if (typeof this.analyzer.analyzeBatch === "function") {
+      this.#scheduleBatch();
       return;
     }
     const text = this.queue.shift();
@@ -128,16 +136,70 @@ export class KanjiRuntime {
   }
 
   #finish(text, entry, generation, ranges) {
-    this.processing = false;
     if (
       generation !== this.generation
       || !this.active
       || this.cache.get(text) !== entry
       || this.abortController?.signal.aborted
     ) {
-      this.#drain();
       return;
     }
+    this.#publish(entry, ranges);
+    this.processing = false;
+    this.#drain();
+  }
+
+  #scheduleBatch() {
+    if (this.flushScheduled) {
+      return;
+    }
+    this.flushScheduled = true;
+    const generation = this.generation;
+    queueMicrotask(() => {
+      if (generation !== this.generation) {
+        return;
+      }
+      this.flushScheduled = false;
+      if (!this.active || this.paused || this.processing || this.queue.length === 0) {
+        return;
+      }
+      // Bound source processing per operation; the provider still applies its
+      // own word count and encoded payload limits after cross-node deduplication.
+      const texts = this.queue.splice(0, 32);
+      const entries = texts.map((text) => this.cache.get(text));
+      const analyzer = this.analyzer;
+      const signal = this.abortController.signal;
+      this.processing = true;
+      let result;
+      try {
+        result = analyzer.analyzeBatch(texts, { signal });
+      } catch {
+        this.#finishBatch(texts, entries, generation, []);
+        return;
+      }
+      void Promise.resolve(result).then(
+        (results) => this.#finishBatch(texts, entries, generation, results),
+        () => this.#finishBatch(texts, entries, generation, []),
+      );
+    });
+  }
+
+  #finishBatch(texts, entries, generation, results) {
+    if (generation !== this.generation || !this.active || this.abortController?.signal.aborted) {
+      return;
+    }
+    for (let index = 0; index < texts.length; index += 1) {
+      const text = texts[index];
+      const entry = entries[index];
+      if (this.cache.get(text) === entry) {
+        this.#publish(entry, annotationRanges(text, results?.[index]));
+      }
+    }
+    this.processing = false;
+    this.#drain();
+  }
+
+  #publish(entry, ranges) {
     entry.status = ranges.length > 0 ? "success" : "failure";
     entry.ranges = ranges;
     const waiters = [...entry.waiters];
@@ -145,13 +207,13 @@ export class KanjiRuntime {
     for (const record of waiters) {
       this.onPlanChanged(record);
     }
-    this.#drain();
   }
 
   #clearCycle() {
     this.cache.clear();
     this.queue.length = 0;
     this.processing = false;
+    this.flushScheduled = false;
   }
 }
 
