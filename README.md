@@ -1,15 +1,18 @@
-# YomiRuby
+# Japanese Reading Helper
 
 [简体中文](README.zh-CN.md)
 
-YomiRuby is a privacy-bounded Tampermonkey reading aid for Japanese web pages.
+Japanese Reading Helper is a privacy-bounded Tampermonkey reading aid for Japanese web pages.
 It adds romaji above words containing kanji through a selected Local, Google,
 or Bing mode and can add best-effort English ruby above matched katakana
 phrases through a separately selected online provider.
 
-**Version 0.6.0 is a locally verified release candidate. It has not yet passed
-the required desktop Chrome + Tampermonkey installation, extension-background
-network capture, update, real-site, or publication gates.**
+**Version 0.6.2 introduces the new Chinese and English product names. Full
+desktop Chrome + Tampermonkey installation, extension-background network capture,
+automatic update, and real-site compatibility remain unverified.**
+
+Previously named **YomiRuby**. Existing setting keys, the userscript namespace,
+and the install filename retain `yomi-ruby`. See the [rename and upgrade notes](docs/rename-0.6.2.md).
 
 ## Features
 
@@ -20,7 +23,7 @@ network capture, update, real-site, or publication gates.**
   installations without that setting migrate to Local so an update cannot
   silently disclose kanji.
 - Local runs pinned `kuromoji@0.1.2` in the page and uses modified Hepburn with
-  macrons. The transitional 0.6.0 build still preloads all twelve dictionaries.
+  macrons. The transitional 0.6.2 build still preloads all twelve dictionaries.
 - Google/Bing use local `Intl.Segmenter` word boundaries and send only complete,
   deduplicated words containing kanji. Google uses bounded `🧩`-joined batches
   with strict positional gates and an exact single-word fallback; Bing uses
@@ -57,24 +60,23 @@ network capture, update, real-site, or publication gates.**
 
 ## Installation status
 
-The planned sole install and automatic-update URL is:
+The public installation entry is [Greasy Fork script 589223](https://greasyfork.org/en/scripts/589223). The GitHub Raw build URL is:
 
-<https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js>
+<https://raw.githubusercontent.com/ywu73/japanese-reading-helper/main/dist/yomi-ruby.user.js>
 
-Do not treat that URL as a released stable build until the 0.6.0 browser and
-publication gates are recorded as complete. The supported compatibility target
-for the first public release is **desktop Google Chrome with Tampermonkey**.
+The current compatibility target is **desktop Google Chrome with Tampermonkey**.
+The full browser verification listed above is still incomplete.
 Other browsers and userscript managers are unverified and receive no
 compatibility promise.
 
-YomiRuby matches ordinary HTTP and HTTPS pages and uses `@noframes`. All-sites
-matching is required so you can choose to enable YomiRuby on any site. It does
+Japanese Reading Helper matches ordinary HTTP and HTTPS pages and uses `@noframes`. All-sites
+matching is required so you can choose to enable Japanese Reading Helper on any site. It does
 not mean either feature starts everywhere: **both features are off for every
 unconfigured exact origin**.
 
 ## Controls and language
 
-YomiRuby registers five Tampermonkey menu commands in a stable order: Kanji,
+Japanese Reading Helper registers five Tampermonkey menu commands in a stable order: Kanji,
 Kanji Mode, Katakana, Katakana Translator, Language. Normal enable, disable,
 startup, mode-switch, provider-switch, and language-switch paths
 do not create consent dialogs, loading banners, or success banners. Temporary
@@ -88,7 +90,7 @@ old menu and old runtime. If the saved new selection cannot start, the selection
 remains saved, only that feature stops, and one temporary error is shown.
 
 The interface supports English and Simplified Chinese. On first run only,
-YomiRuby maps a primary browser language beginning with `zh` to Simplified
+Japanese Reading Helper maps a primary browser language beginning with `zh` to Simplified
 Chinese and everything else to English, then stores the choice globally. A
 manual language switch permanently overrides that initial detection. Switching
 language does not enable or disable a feature, rescan text, load Kuromoji, or
@@ -124,7 +126,7 @@ appliance, proxy, or service-side logs. Bing puts each bounded phrase batch in a
 POST form body, which still discloses it to the browser extension, network path,
 and Bing.
 
-YomiRuby has no project-owned analytics, telemetry, crash reporting, remote
+Japanese Reading Helper has no project-owned analytics, telemetry, crash reporting, remote
 logging, tracking identifier, install callback, or silent cross-provider
 fallback. The only allowed translation routes are:
 
@@ -147,7 +149,7 @@ See [Security and privacy boundary](docs/security-boundary.md), [Network audit](
 - Generated classes and attributes use the `yomi-ruby-` /
   `data-yomi-ruby-` prefix.
 - Scripts, styles, forms, editable areas, code, hidden content, existing ruby,
-  SVG/MathML, media, and YomiRuby-owned UI are skipped.
+  SVG/MathML, media, and Japanese Reading Helper-owned UI are skipped.
 - Existing author ruby and Katakana Terminator annotations are preserved.
 - A page coordinator prevents nested or overlapping generated ruby and restores
   source text when annotation is disabled.
@@ -168,10 +170,10 @@ See [Security and privacy boundary](docs/security-boundary.md), [Network audit](
 
 ## Katakana Terminator acknowledgement
 
-YomiRuby's optional online Katakana-to-English module is based on Katakana
+Japanese Reading Helper's optional online Katakana-to-English module is based on Katakana
 Terminator by Arnie97 and the Katakana Terminator Contributors. It adapts
 Katakana Terminator's Katakana matching pattern and Google Translate request
-approach. YomiRuby's selectable kanji-romaji modes, verified Kuromoji loading,
+approach. Japanese Reading Helper's selectable kanji-romaji modes, verified Kuromoji loading,
 Google/Bing source-romaji clients, independent deep runtimes, foreground whole-
 page scheduling, cancellation, response validation, reversible lifecycle, and
 bilingual controls are separate implementations. Katakana Terminator is
@@ -194,7 +196,7 @@ npm run verify:deterministic-build
 
 `src/` is the source of truth. `dist/yomi-ruby.user.js` is generated only by
 `scripts/build.mjs` and must not be hand-edited. The build embeds canonical
-YomiRuby and third-party license/NOTICE text and is audited for version,
+Japanese Reading Helper and third-party license/NOTICE text and is audited for version,
 metadata, storage scope, request paths, prohibited capabilities, resources, and
 legal material.
 
@@ -209,7 +211,7 @@ vulnerabilities must use GitHub Private Vulnerability Reporting; do not publish
 sensitive details in a public Issue. See [CONTRIBUTING.md](CONTRIBUTING.md) and
 [SECURITY.md](SECURITY.md).
 
-YomiRuby-owned code and contributions are licensed under the [MIT License](LICENSE).
+Japanese Reading Helper-owned code and contributions are licensed under the [MIT License](LICENSE).
 Third-party license and provenance material is recorded in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). No CLA or DCO is required for
-version 0.6.0.
+version 0.6.2.

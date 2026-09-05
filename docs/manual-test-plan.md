@@ -1,4 +1,4 @@
-# Desktop Chrome + Tampermonkey manual test plan — YomiRuby 0.6.1
+# Desktop Chrome + Tampermonkey manual test plan — Japanese Reading Helper 0.6.2
 
 Do not install this candidate, mutate the user's Chrome/Tampermonkey state,
 operate a real site, or disable a separately installed Katakana Terminator
@@ -10,16 +10,20 @@ origin, and timestamps.
 
 1. Confirm the installed file is byte-identical to `dist/yomi-ruby.user.js`.
 2. Inspect the combined public `@name`, localized name metadata, namespace,
-   `@version 0.6.1`, MIT
+   `@version 0.6.2`, MIT
    metadata, homepage/support/download/update URLs, two ordinary web `@match`
    values, `@noframes`, twelve SRI `@resource` values, exact grants, and exactly
    three `@connect` values: `translate.googleapis.com`, `www.bing.com`, and
    `cn.bing.com`.
-3. Confirm there is one active YomiRuby entry and no obsolete Japanese Romaji
-   Ruby candidate running at the same time.
+3. Confirm there is one active Japanese Reading Helper entry and no duplicate
+   YomiRuby or obsolete Japanese Romaji Ruby entry running at the same time.
 4. Capture a fresh GitHub Raw install and automatic update from a controlled
    older test version. Distinguish userscript, resource, and page-runtime
-   acquisition.
+   acquisition. Start from YomiRuby 0.6.1 with saved locale, both global provider/
+   mode selections, and different feature choices on two exact origins. Verify
+   that all values survive, disabled origins remain disabled, and no second
+   script entry is created. Exercise both the old repository update URL and the
+   renamed URL. Keeping the namespace alone is not proof of successful migration.
 5. Confirm a Release artifact and checksum only after publication is separately
    authorized; both must match `main/dist/yomi-ruby.user.js` byte for byte.
 
@@ -66,7 +70,7 @@ primary language:
 
 1. On an unconfigured origin, confirm both feature menus say Enable and neither
    feature starts.
-2. Before a feature click, confirm no page scan, YomiRuby style/status, body
+2. Before a feature click, confirm no page scan, Japanese Reading Helper style/status, body
    MutationObserver, dictionary read, Google request, or
    Bing initialization exists.
 3. Preload each exact-origin boolean independently and confirm only that module
@@ -151,7 +155,7 @@ Capture extension-background traffic, not only the page target.
    `https://www.bing.com/translator`, its final exact allowed URL, and the
    anonymous POST to that same origin's `/ttranslatev3`.
 4. Prove both requests are Cookie-free and account-free in extension context.
-   Confirm YomiRuby does not set a custom User-Agent, record the browser/extension
+   Confirm Japanese Reading Helper does not set a custom User-Agent, record the browser/extension
    request's actual User-Agent behavior, and confirm the HTML is parsed but no
    Bing page script is executed.
 5. Confirm GET sends no phrase. For katakana, confirm each POST sends a stable
@@ -224,9 +228,9 @@ plan when both features are enabled.
 Check ordinary text, links, nested inline markup, author ruby, Katakana
 Terminator ruby, forms, editable regions, code/pre, hidden/inert/aria-hidden
 content, script/style/template, SVG/MathML, media, dynamic content, and
-YomiRuby-owned UI. Confirm:
+Japanese Reading Helper-owned UI. Confirm:
 
-- all ownership names use the YomiRuby prefix;
+- all ownership names retain the `yomi-ruby-` / `data-yomi-ruby-` prefixes;
 - pending katakana overlap renders no placeholder;
 - success wins its overlap; failure releases it to reliable whole-token Kanji;
 - disabling either feature preserves the other;
@@ -236,7 +240,7 @@ YomiRuby-owned UI. Confirm:
 
 ## 8. Failure, CSP, and real-site gates
 
-Confirm 0.6.1 still installs/preloads all twelve Kuromoji resources and performs
+Confirm 0.6.2 still installs/preloads all twelve Kuromoji resources and performs
 no runtime dynamic dictionary download/cache/delete flow. Treat the proposed
 roughly 17 MiB lazy cache as unimplemented rather than as a failed fallback.
 
@@ -250,7 +254,7 @@ explicit authorization. Include dynamic posts, links, editor exclusion,
 scrolling, reload, new tabs, cross-origin isolation, rollback, performance, and
 extension-background capture.
 
-A coexistence check may prove YomiRuby preserves existing Katakana Terminator
+A coexistence check may prove Japanese Reading Helper preserves existing Katakana Terminator
 annotations. Disabling that separate script is a distinct, separately
 authorized migration. Do not claim Chrome/Tampermonkey compatibility, anonymous
 Bing behavior, privacy capture, China reachability, update behavior,

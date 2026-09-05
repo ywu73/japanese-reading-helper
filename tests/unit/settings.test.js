@@ -44,7 +44,7 @@ test("the locale persistence boundary rejects values outside the supported enum"
 
   await assert.rejects(
     setStoredLocale(async (...values) => writes.push(values), "ja"),
-    /Unsupported YomiRuby locale/u,
+    /Unsupported Japanese Reading Helper locale/u,
   );
   assert.deepEqual(writes, []);
 });
@@ -57,7 +57,7 @@ test("the translation provider persistence boundary accepts only bing and google
   await setStoredTranslationProvider(setValue, "google");
   await assert.rejects(
     setStoredTranslationProvider(setValue, "baidu"),
-    /Unsupported YomiRuby translation provider/u,
+    /Unsupported Japanese Reading Helper translation provider/u,
   );
 
   assert.deepEqual(writes, [
@@ -75,7 +75,7 @@ test("the kanji romaji mode persistence boundary accepts only google, bing, and 
   await setStoredKanjiRomajiMode(setValue, "local");
   await assert.rejects(
     setStoredKanjiRomajiMode(setValue, "azure"),
-    /Unsupported YomiRuby kanji romaji mode/u,
+    /Unsupported Japanese Reading Helper kanji romaji mode/u,
   );
 
   assert.deepEqual(writes, [

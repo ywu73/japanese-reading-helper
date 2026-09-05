@@ -157,7 +157,7 @@ export function createYomiRubySession({
       duration: 9000,
       error: true,
     });
-    logger?.error?.(`[YomiRuby] Refused to start ${feature} annotation`, error);
+    logger?.error?.(`[Japanese Reading Helper] Refused to start ${feature} annotation`, error);
   }
 
   function showStatus(message, { duration = 4000, error = false } = {}) {

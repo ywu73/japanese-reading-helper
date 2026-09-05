@@ -1,9 +1,9 @@
 {
-  "name": "yomi-ruby",
-  "version": "0.6.1",
+  "name": "japanese-reading-helper",
+  "version": "0.6.2",
   "private": true,
   "license": "MIT",
-  "description": "YomiRuby, a privacy-bounded Tampermonkey reading aid for selectable local or online kanji romaji and optional online katakana translation.",
+  "description": "Japanese Reading Helper, a privacy-bounded Tampermonkey reading aid for selectable local or online kanji romaji and optional online katakana translation.",
   "type": "module",
   "engines": {
     "node": "^20.19.0 || ^22.13.0 || >=24.0.0"

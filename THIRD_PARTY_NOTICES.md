@@ -1,6 +1,6 @@
 # Third-party notices
 
-YomiRuby includes or adapts material from the following projects. These notices
+Japanese Reading Helper includes or adapts material from the following projects. These notices
 do not replace the full license texts stored in this repository.
 
 ## Kuromoji.js 0.1.2
@@ -25,10 +25,10 @@ The bundled tokenizer path also includes:
 
 ## Katakana Terminator
 
-YomiRuby's optional online Katakana-to-English module is based on Katakana
+Japanese Reading Helper's optional online Katakana-to-English module is based on Katakana
 Terminator by Arnie97 and the Katakana Terminator Contributors. It adapts
 Katakana Terminator's Katakana matching pattern and Google Translate request
-approach. The remainder of YomiRuby is a separate implementation.
+approach. The remainder of Japanese Reading Helper is a separate implementation.
 
 Katakana Terminator is licensed under the MIT License.
 

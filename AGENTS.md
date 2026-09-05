@@ -2,7 +2,7 @@
 
 ## 1. Project Scope
 
-YomiRuby is a privacy-bounded Tampermonkey reading aid. Its implemented modules
+Japanese Reading Helper is a privacy-bounded Tampermonkey reading aid. Its implemented modules
 display local Hepburn romaji above Japanese words containing kanji and, after
 the feature is enabled for the exact origin, online English ruby above matched
 katakana phrases.
@@ -27,7 +27,7 @@ The project inherits the global collaboration rules from
 - Do not add any other remote translation, reading, AI, analytics, logging, or
   fallback endpoint without a new explicit product decision.
 - Third-party remote executable program and dictionary assets remain limited to
-  explicitly approved immutable assets. YomiRuby's first-party userscript may
+  explicitly approved immutable assets. Japanese Reading Helper's first-party userscript may
   use the approved GitHub Raw `main` install/update URL only after the release
   gates are complete; this does not authorize mutable third-party runtime code.
 - Pin every executable dependency to an exact version and a verified SHA-256

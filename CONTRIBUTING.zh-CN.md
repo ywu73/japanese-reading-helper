@@ -1,8 +1,8 @@
-# 参与 YomiRuby 贡献
+# 参与日语阅读助手贡献
 
 [English](CONTRIBUTING.md)
 
-感谢你帮助改进 YomiRuby。普通缺陷、文档问题和功能提案可以通过 GitHub Issues 讨论；安全或隐私漏洞必须按 [SECURITY.md](SECURITY.md) 报告，不要使用公开 Issue。
+感谢你帮助改进日语阅读助手。普通缺陷、文档问题和功能提案可以通过 GitHub Issues 讨论；安全或隐私漏洞必须按 [SECURITY.md](SECURITY.md) 报告，不要使用公开 Issue。
 
 提交变更前：
 
@@ -20,4 +20,4 @@ npm run verify:vendor
 npm run verify:deterministic-build
 ```
 
-变更说明应写清改动内容、涉及的隐私或网络表面、实际执行的命令，以及仍未验证的浏览器或发布声明。贡献采用 YomiRuby 的 MIT License。0.6.0 不要求 Contributor License Agreement 或 Developer Certificate of Origin。
+变更说明应写清改动内容、涉及的隐私或网络表面、实际执行的命令，以及仍未验证的浏览器或发布声明。贡献采用日语阅读助手的 MIT License。0.6.0 不要求 Contributor License Agreement 或 Developer Certificate of Origin。

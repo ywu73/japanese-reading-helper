@@ -1,8 +1,8 @@
-# Contributing to YomiRuby
+# Contributing to Japanese Reading Helper
 
 [简体中文](CONTRIBUTING.zh-CN.md)
 
-Thank you for helping improve YomiRuby. Ordinary bugs, documentation problems,
+Thank you for helping improve Japanese Reading Helper. Ordinary bugs, documentation problems,
 and proposed features may be discussed through GitHub Issues. Security or
 privacy vulnerabilities must follow [SECURITY.md](SECURITY.md) instead of a
 public Issue.
@@ -29,6 +29,6 @@ npm run verify:deterministic-build
 
 Describe what changed, which privacy or network surfaces are affected, the
 commands actually run, and every browser or publication claim that remains
-unverified. Contributions are accepted under YomiRuby's MIT License. Version
+unverified. Contributions are accepted under Japanese Reading Helper's MIT License. Version
 0.6.0 uses neither a Contributor License Agreement nor a Developer Certificate
 of Origin.

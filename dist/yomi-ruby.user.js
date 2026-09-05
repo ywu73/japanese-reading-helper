@@ -1,16 +1,16 @@
 // ==UserScript==
-// @name         日语网页汉字罗马音与片假名英译 ｜ YomiRuby
-// @name:zh-CN   日语网页汉字罗马音与片假名英译 ｜ YomiRuby
-// @name:en      YomiRuby
+// @name         日语阅读助手 — 汉字罗马音与片假名英译
+// @name:zh-CN   日语阅读助手 — 汉字罗马音与片假名英译
+// @name:en      Japanese Reading Helper — Kanji Romaji & Katakana English
 // @namespace    yomi-ruby.local
-// @version      0.6.1
+// @version      0.6.2
 // @description  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:en  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:zh-CN  为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。
-// @homepageURL  https://github.com/ywu73/yomi-ruby
-// @supportURL   https://github.com/ywu73/yomi-ruby/issues
-// @downloadURL  https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js
-// @updateURL    https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js
+// @homepageURL  https://github.com/ywu73/japanese-reading-helper
+// @supportURL   https://github.com/ywu73/japanese-reading-helper/issues
+// @downloadURL  https://raw.githubusercontent.com/ywu73/japanese-reading-helper/main/dist/yomi-ruby.user.js
+// @updateURL    https://raw.githubusercontent.com/ywu73/japanese-reading-helper/main/dist/yomi-ruby.user.js
 // @license      MIT
 // @match        http://*/*
 // @match        https://*/*
@@ -41,10 +41,10 @@
 // @grant        GM_removeValueChangeListener
 // ==/UserScript==
 //
-// YomiRuby copyright (c) 2026 ywu73.
+// Japanese Reading Helper copyright (c) 2026 ywu73.
 // Third-party provenance and independent license files are retained in the repository.
 //
-// ===== YomiRuby — MIT License =====
+// ===== Japanese Reading Helper — MIT License =====
 // MIT License
 //
 // Copyright (c) 2026 ywu73
@@ -479,9 +479,9 @@
     mod
   ));
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiNode.js
+  // node_modules/kuromoji/src/viterbi/ViterbiNode.js
   var require_ViterbiNode = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiNode.js"(exports, module) {
+    "node_modules/kuromoji/src/viterbi/ViterbiNode.js"(exports, module) {
       "use strict";
       function ViterbiNode(node_name, node_cost, start_pos, length, type, left_id, right_id, surface_form) {
         this.name = node_name;
@@ -503,9 +503,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiLattice.js
+  // node_modules/kuromoji/src/viterbi/ViterbiLattice.js
   var require_ViterbiLattice = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiLattice.js"(exports, module) {
+    "node_modules/kuromoji/src/viterbi/ViterbiLattice.js"(exports, module) {
       "use strict";
       var ViterbiNode = require_ViterbiNode();
       function ViterbiLattice() {
@@ -534,9 +534,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/util/SurrogateAwareString.js
+  // node_modules/kuromoji/src/util/SurrogateAwareString.js
   var require_SurrogateAwareString = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/util/SurrogateAwareString.js"(exports, module) {
+    "node_modules/kuromoji/src/util/SurrogateAwareString.js"(exports, module) {
       "use strict";
       function SurrogateAwareString(str) {
         this.str = str;
@@ -598,9 +598,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiBuilder.js
+  // node_modules/kuromoji/src/viterbi/ViterbiBuilder.js
   var require_ViterbiBuilder = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiBuilder.js"(exports, module) {
+    "node_modules/kuromoji/src/viterbi/ViterbiBuilder.js"(exports, module) {
       "use strict";
       var ViterbiNode = require_ViterbiNode();
       var ViterbiLattice = require_ViterbiLattice();
@@ -661,9 +661,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiSearcher.js
+  // node_modules/kuromoji/src/viterbi/ViterbiSearcher.js
   var require_ViterbiSearcher = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/viterbi/ViterbiSearcher.js"(exports, module) {
+    "node_modules/kuromoji/src/viterbi/ViterbiSearcher.js"(exports, module) {
       "use strict";
       function ViterbiSearcher(connection_costs) {
         this.connection_costs = connection_costs;
@@ -728,9 +728,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/util/IpadicFormatter.js
+  // node_modules/kuromoji/src/util/IpadicFormatter.js
   var require_IpadicFormatter = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/util/IpadicFormatter.js"(exports, module) {
+    "node_modules/kuromoji/src/util/IpadicFormatter.js"(exports, module) {
       "use strict";
       function IpadicFormatter() {
       }
@@ -770,9 +770,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/Tokenizer.js
+  // node_modules/kuromoji/src/Tokenizer.js
   var require_Tokenizer = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/Tokenizer.js"(exports, module) {
+    "node_modules/kuromoji/src/Tokenizer.js"(exports, module) {
       "use strict";
       var ViterbiBuilder = require_ViterbiBuilder();
       var ViterbiSearcher = require_ViterbiSearcher();
@@ -854,9 +854,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/doublearray/doublearray.js
+  // node_modules/doublearray/doublearray.js
   var require_doublearray = __commonJS({
-    "../../yomi-ruby/node_modules/doublearray/doublearray.js"(exports, module) {
+    "node_modules/doublearray/doublearray.js"(exports, module) {
       (function() {
         "use strict";
         var TERM_CHAR = "\0", TERM_CODE = 0, ROOT_ID = 0, NOT_FOUND = -1, BASE_SIGNED = true, CHECK_SIGNED = true, BASE_BYTES = 4, CHECK_BYTES = 4, MEMORY_EXPAND_RATIO = 2;
@@ -1352,9 +1352,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/util/ByteBuffer.js
+  // node_modules/kuromoji/src/util/ByteBuffer.js
   var require_ByteBuffer = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/util/ByteBuffer.js"(exports, module) {
+    "node_modules/kuromoji/src/util/ByteBuffer.js"(exports, module) {
       "use strict";
       var stringToUtf8Bytes = function(str) {
         var bytes = new Uint8Array(str.length * 4);
@@ -1555,9 +1555,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/dict/TokenInfoDictionary.js
+  // node_modules/kuromoji/src/dict/TokenInfoDictionary.js
   var require_TokenInfoDictionary = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/dict/TokenInfoDictionary.js"(exports, module) {
+    "node_modules/kuromoji/src/dict/TokenInfoDictionary.js"(exports, module) {
       "use strict";
       var ByteBuffer = require_ByteBuffer();
       function TokenInfoDictionary() {
@@ -1658,9 +1658,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/dict/ConnectionCosts.js
+  // node_modules/kuromoji/src/dict/ConnectionCosts.js
   var require_ConnectionCosts = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/dict/ConnectionCosts.js"(exports, module) {
+    "node_modules/kuromoji/src/dict/ConnectionCosts.js"(exports, module) {
       "use strict";
       function ConnectionCosts(forward_dimension, backward_dimension) {
         this.forward_dimension = forward_dimension;
@@ -1692,9 +1692,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/dict/CharacterClass.js
+  // node_modules/kuromoji/src/dict/CharacterClass.js
   var require_CharacterClass = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/dict/CharacterClass.js"(exports, module) {
+    "node_modules/kuromoji/src/dict/CharacterClass.js"(exports, module) {
       "use strict";
       function CharacterClass(class_id, class_name, is_always_invoke, is_grouping, max_length) {
         this.class_id = class_id;
@@ -1707,9 +1707,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/dict/InvokeDefinitionMap.js
+  // node_modules/kuromoji/src/dict/InvokeDefinitionMap.js
   var require_InvokeDefinitionMap = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/dict/InvokeDefinitionMap.js"(exports, module) {
+    "node_modules/kuromoji/src/dict/InvokeDefinitionMap.js"(exports, module) {
       "use strict";
       var ByteBuffer = require_ByteBuffer();
       var CharacterClass = require_CharacterClass();
@@ -1768,9 +1768,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/dict/CharacterDefinition.js
+  // node_modules/kuromoji/src/dict/CharacterDefinition.js
   var require_CharacterDefinition = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/dict/CharacterDefinition.js"(exports, module) {
+    "node_modules/kuromoji/src/dict/CharacterDefinition.js"(exports, module) {
       "use strict";
       var InvokeDefinitionMap = require_InvokeDefinitionMap();
       var CharacterClass = require_CharacterClass();
@@ -1904,9 +1904,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/dict/UnknownDictionary.js
+  // node_modules/kuromoji/src/dict/UnknownDictionary.js
   var require_UnknownDictionary = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/dict/UnknownDictionary.js"(exports, module) {
+    "node_modules/kuromoji/src/dict/UnknownDictionary.js"(exports, module) {
       "use strict";
       var TokenInfoDictionary = require_TokenInfoDictionary();
       var CharacterDefinition = require_CharacterDefinition();
@@ -1938,9 +1938,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/kuromoji/src/dict/DynamicDictionaries.js
+  // node_modules/kuromoji/src/dict/DynamicDictionaries.js
   var require_DynamicDictionaries = __commonJS({
-    "../../yomi-ruby/node_modules/kuromoji/src/dict/DynamicDictionaries.js"(exports, module) {
+    "node_modules/kuromoji/src/dict/DynamicDictionaries.js"(exports, module) {
       "use strict";
       var doublearray = require_doublearray();
       var TokenInfoDictionary = require_TokenInfoDictionary();
@@ -1992,9 +1992,9 @@
     }
   });
 
-  // ../../yomi-ruby/node_modules/zlibjs/bin/gunzip.min.js
+  // node_modules/zlibjs/bin/gunzip.min.js
   var require_gunzip_min = __commonJS({
-    "../../yomi-ruby/node_modules/zlibjs/bin/gunzip.min.js"(exports) {
+    "node_modules/zlibjs/bin/gunzip.min.js"(exports) {
       (function() {
         "use strict";
         function n(e) {
@@ -4686,7 +4686,7 @@
   function originSettingKey(feature, origin) {
     const prefix = SETTING_PREFIXES[feature];
     if (!prefix) {
-      throw new TypeError(`Unknown YomiRuby feature: ${feature}`);
+      throw new TypeError(`Unknown Japanese Reading Helper feature: ${feature}`);
     }
     return `${prefix}${origin}`;
   }
@@ -4701,7 +4701,7 @@
   }
   async function setStoredLocale(gmSetValue, locale) {
     if (!isSupportedLocale(locale)) {
-      throw new TypeError(`Unsupported YomiRuby locale: ${locale}`);
+      throw new TypeError(`Unsupported Japanese Reading Helper locale: ${locale}`);
     }
     await gmSetValue(LOCALE_SETTING_KEY, locale);
   }
@@ -4710,7 +4710,7 @@
   }
   async function setStoredTranslationProvider(gmSetValue, provider) {
     if (!isSupportedTranslationProvider(provider)) {
-      throw new TypeError(`Unsupported YomiRuby translation provider: ${provider}`);
+      throw new TypeError(`Unsupported Japanese Reading Helper translation provider: ${provider}`);
     }
     await gmSetValue(TRANSLATION_PROVIDER_SETTING_KEY, provider);
   }
@@ -4719,7 +4719,7 @@
   }
   async function setStoredKanjiRomajiMode(gmSetValue, mode) {
     if (!isSupportedKanjiRomajiMode(mode)) {
-      throw new TypeError(`Unsupported YomiRuby kanji romaji mode: ${mode}`);
+      throw new TypeError(`Unsupported Japanese Reading Helper kanji romaji mode: ${mode}`);
     }
     await gmSetValue(KANJI_ROMAJI_MODE_SETTING_KEY, mode);
   }
@@ -6530,7 +6530,7 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
         duration: 9e3,
         error: true
       });
-      logger?.error?.(`[YomiRuby] Refused to start ${feature} annotation`, error);
+      logger?.error?.(`[Japanese Reading Helper] Refused to start ${feature} annotation`, error);
     }
     function showStatus(message, { duration = 4e3, error = false } = {}) {
       removeStatus();

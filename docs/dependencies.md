@@ -27,7 +27,7 @@ currently maintained.
 
 ## Katakana matching attribution and translation providers
 
-YomiRuby's full-width and half-width katakana matching semantics are derived
+Japanese Reading Helper's full-width and half-width katakana matching semantics are derived
 from **Katakana Terminator**, copyright 2017-2022 Katakana Terminator
 Contributors, licensed MIT:
 
@@ -36,7 +36,7 @@ Contributors, licensed MIT:
 - reviewed reference copy: `third_party/katakana-terminator/katakana-terminator.reference.user.js`
 - provenance and digest: `third_party/katakana-terminator/README.md`
 
-YomiRuby does not copy Katakana Terminator's periodic whole-page scanner or its
+Japanese Reading Helper does not copy Katakana Terminator's periodic whole-page scanner or its
 DOM/request lifecycle. The page coordinator, viewport scheduling, batching,
 cancellation, response validation, ownership, and rollback are project-owned.
 
@@ -49,7 +49,7 @@ The Bing client is an independent, minimal implementation informed by
 first-party translator-page evidence observed on 2026-07-26 and corroborated
 against `plainheart/bing-translate-api` at immutable commit
 `d2bbd97695db48e7aa707f5bd66c30d862eef29f`. No code or runtime dependency from
-that Node package is bundled. YomiRuby fetches the approved Bing translator
+that Node package is bundled. Japanese Reading Helper fetches the approved Bing translator
 page anonymously, parses only `IG`, the `#rich_tta` IID, and the
 `params_AbusePreventionHelper` tuple without executing returned code, then sends
 bounded newline-joined katakana batches per anonymous `/ttranslatev3` POST.

@@ -25,7 +25,7 @@ export function isSupportedKanjiRomajiMode(value) {
 export function originSettingKey(feature, origin) {
   const prefix = SETTING_PREFIXES[feature];
   if (!prefix) {
-    throw new TypeError(`Unknown YomiRuby feature: ${feature}`);
+    throw new TypeError(`Unknown Japanese Reading Helper feature: ${feature}`);
   }
   return `${prefix}${origin}`;
 }
@@ -49,7 +49,7 @@ export async function getStoredLocale(gmGetValue) {
 
 export async function setStoredLocale(gmSetValue, locale) {
   if (!isSupportedLocale(locale)) {
-    throw new TypeError(`Unsupported YomiRuby locale: ${locale}`);
+    throw new TypeError(`Unsupported Japanese Reading Helper locale: ${locale}`);
   }
   await gmSetValue(LOCALE_SETTING_KEY, locale);
 }
@@ -60,7 +60,7 @@ export async function getStoredTranslationProvider(gmGetValue) {
 
 export async function setStoredTranslationProvider(gmSetValue, provider) {
   if (!isSupportedTranslationProvider(provider)) {
-    throw new TypeError(`Unsupported YomiRuby translation provider: ${provider}`);
+    throw new TypeError(`Unsupported Japanese Reading Helper translation provider: ${provider}`);
   }
   await gmSetValue(TRANSLATION_PROVIDER_SETTING_KEY, provider);
 }
@@ -71,7 +71,7 @@ export async function getStoredKanjiRomajiMode(gmGetValue) {
 
 export async function setStoredKanjiRomajiMode(gmSetValue, mode) {
   if (!isSupportedKanjiRomajiMode(mode)) {
-    throw new TypeError(`Unsupported YomiRuby kanji romaji mode: ${mode}`);
+    throw new TypeError(`Unsupported Japanese Reading Helper kanji romaji mode: ${mode}`);
   }
   await gmSetValue(KANJI_ROMAJI_MODE_SETTING_KEY, mode);
 }

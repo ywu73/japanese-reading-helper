@@ -43,7 +43,7 @@ const coordinator = new AnnotationCoordinator({
   cancelIdleCallback: undefined,
 });
 coordinator.enableKanji(createAnalyzer(tokenizer));
-dom.window.document.title = "YomiRuby annotated visual fixture";
+dom.window.document.title = "Japanese Reading Helper annotated visual fixture";
 
 const outputPath = path.join(projectRoot, "work/prototypes/annotated-preview.html");
 await writeFile(outputPath, dom.serialize(), "utf8");

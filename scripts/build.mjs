@@ -8,7 +8,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const packageJson = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8"));
 const vendorManifest = JSON.parse(await readFile(path.join(projectRoot, "vendor/manifest.json"), "utf8"));
 const legalFiles = [
-  ["YomiRuby — MIT License", "LICENSE"],
+  ["Japanese Reading Helper — MIT License", "LICENSE"],
   ["Kuromoji.js — Apache License 2.0", "licenses/Apache-2.0.txt"],
   ["Kuromoji.js — upstream code copyright", "licenses/Kuromoji-COPYRIGHT.txt"],
   ["Kuromoji.js — upstream NOTICE", "licenses/Kuromoji-NOTICE.md"],
@@ -35,18 +35,18 @@ const resourceMetadata = vendorManifest.dictionary
   .map((asset) => `// @resource     ${asset.resourceName} ${asset.url}#sha256=${asset.sha256}`)
   .join("\n");
 const header = `// ==UserScript==
-// @name         日语网页汉字罗马音与片假名英译 ｜ YomiRuby
-// @name:zh-CN   日语网页汉字罗马音与片假名英译 ｜ YomiRuby
-// @name:en      YomiRuby
+// @name         日语阅读助手 — 汉字罗马音与片假名英译
+// @name:zh-CN   日语阅读助手 — 汉字罗马音与片假名英译
+// @name:en      Japanese Reading Helper — Kanji Romaji & Katakana English
 // @namespace    yomi-ruby.local
 // @version      ${packageJson.version}
 // @description  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:en  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:zh-CN  为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。
-// @homepageURL  https://github.com/ywu73/yomi-ruby
-// @supportURL   https://github.com/ywu73/yomi-ruby/issues
-// @downloadURL  https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js
-// @updateURL    https://raw.githubusercontent.com/ywu73/yomi-ruby/main/dist/yomi-ruby.user.js
+// @homepageURL  https://github.com/ywu73/japanese-reading-helper
+// @supportURL   https://github.com/ywu73/japanese-reading-helper/issues
+// @downloadURL  https://raw.githubusercontent.com/ywu73/japanese-reading-helper/main/dist/yomi-ruby.user.js
+// @updateURL    https://raw.githubusercontent.com/ywu73/japanese-reading-helper/main/dist/yomi-ruby.user.js
 // @license      MIT
 // @match        http://*/*
 // @match        https://*/*
@@ -66,7 +66,7 @@ ${resourceMetadata}
 // @grant        GM_removeValueChangeListener
 // ==/UserScript==
 //
-// YomiRuby copyright (c) 2026 ywu73.
+// Japanese Reading Helper copyright (c) 2026 ywu73.
 // Third-party provenance and independent license files are retained in the repository.
 //
 ${embeddedLegal}`;
