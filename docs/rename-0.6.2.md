@@ -26,7 +26,7 @@ GitHub 官方说明仓库改名后会重定向原仓库的网页与 Git 操作�
 ## 版本与历史材料
 
 0.6.2 统一使用新的中英文名称。GitHub 仓库改名、推送 `main` 与更新
-Greasy Fork 是分别执行和核验的操作。历史验证报告、固定提交安装文件和原始截图仍保留
+Greasy Fork 已分别执行并核验。历史验证报告、固定提交安装文件和原始截图仍保留
 YomiRuby 名称；中文使用指南已明确标记其固定链接对应旧版 0.6.0。
 
 保留设置键和命名空间不能替代真实升级测试。应按
@@ -34,16 +34,19 @@ YomiRuby 名称；中文使用指南已明确标记其固定链接对应旧版 0
 验证从旧版更新后的单一脚本条目、设置保留、精确网站开关，以及旧/新仓库地址
 的更新行为。真实 Chrome/Tampermonkey 升级尚未验证。
 
-## 2026-09-05 发布前验证记录
+## 2026-09-05 发布与验证记录
 
 - GitHub 已更名为 `ywu73/japanese-reading-helper`；仓库 ID 仍为
-  `1312757637`，本地 `origin` 已同步。远端 `main` 仍为
-  `0fa11ca5d653fc9bef35b138d845de51c0c6f7e9`，未推送候选代码。
+  `1312757637`，本地 `origin` 已同步。远端 `main` 为
+  `fab8c9267406c793bbef4ac32aceaf34e1d0427b`。
 - 原仓库网页重定向到新名称并返回 HTTP 200；新旧仓库路径的 GitHub Raw
   `main/dist/yomi-ruby.user.js` 均返回 HTTP 200。
 - 使用新仓库名、固定在 `c4f5660bf7e632351b9e3a329e8dd13316584784`
   的 jsDelivr 0.6.0 安装链接返回 HTTP 200。
-- Greasy Fork 脚本 `589223` 页面返回 HTTP 200，仍显示旧版名称，未发布改名候选。
+- Greasy Fork 脚本 `589223` 已更新并公开显示版本 `0.6.2`；中文标题为
+  `日语阅读助手 — 汉字罗马音与片假名英译`，英文页面标题为
+  `Japanese Reading Helper — Kanji Romaji & Katakana English`，支持链接已指向
+  `ywu73/japanese-reading-helper/issues`。
 - Node 24.14.0：`npm run check` 通过，包括 220 项测试、真实本地词典加载、
   feasibility/resource prototype、构建与元数据审计。
 - `npm run verify:vendor` 通过，12 项固定字典资源的大小与 SHA-256 均匹配。
@@ -58,7 +61,3 @@ YomiRuby 名称；中文使用指南已明确标记其固定链接对应旧版 0
 
 用户已明确授权提交、合并、只推送 `main`，并更新现有 Greasy Fork 脚本条目，
 包括上述中英文名称。此授权不代表真实浏览器升级或兼容性验证已经完成。
-
-Greasy Fork 发布尝试停在登录流程：浏览器工具拒绝访问登录跳转后的 URL 并
-终止会话，未提交脚本更新。现有线上条目仍为 0.6.1，需在可用的授权会话中
-上传 `dist/yomi-ruby.user.js`，并核对中英文名称、版本与安装入口。
