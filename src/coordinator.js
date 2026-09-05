@@ -1,5 +1,6 @@
 import {
   convertExistingKanaRuby,
+  isBlockedTextContainer,
   restoreConvertedKanaRuby,
   shouldSkipTextNode,
 } from "./dom.js";
@@ -265,7 +266,7 @@ export class AnnotationCoordinator {
   }
 
   #collectTextNodes(root) {
-    if (!root?.isConnected) {
+    if (!root?.isConnected || hasBlockedTextAncestor(root)) {
       return;
     }
     if (![1, 3, 9, 11].includes(root.nodeType)) {
@@ -337,6 +338,7 @@ export class AnnotationCoordinator {
     }
     let processed = 0;
     let backgroundProcessed = 0;
+    let checkedJob = null;
     const startedAt = this.now();
     this.scanStyleCache = new WeakMap();
     while (
@@ -362,6 +364,16 @@ export class AnnotationCoordinator {
         continue;
       }
       const job = this.scanJobs[0];
+      if (job !== checkedJob) {
+        checkedJob = job;
+        // A scan root may have moved under a code/form container during
+        // the preceding yield. Recheck once per job per slice, not per node.
+        if (hasBlockedTextAncestor(job.root)) {
+          this.scanJobs.shift();
+          processed += 1;
+          continue;
+        }
+      }
       const node = job.next;
       if (!node || !job.root.isConnected) {
         this.scanJobs.shift();
@@ -379,7 +391,9 @@ export class AnnotationCoordinator {
       // Advance before rendering can replace the current text node. If a page
       // removes the saved cursor between slices, restart its connected root.
       job.walker.currentNode = node;
-      job.next = job.walker.nextNode();
+      job.next = isPrunedTextContainer(node)
+        ? nextOutsideSubtree(job.walker, job.root)
+        : job.walker.nextNode();
       if (node.nodeType === 3) {
         this.#processTextNode(node);
       } else if (this.kanjiRuntime && node.nodeName === "RUBY") {
@@ -607,6 +621,34 @@ export class AnnotationCoordinator {
       this.scanHandle = null;
     }
   }
+}
+
+function hasBlockedTextAncestor(node) {
+  for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+    if (isPrunedTextContainer(parent)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isPrunedTextContainer(node) {
+  // Nested author ruby has independently convertible readings. Traverse RUBY
+  // elements while retaining the existing text-node exclusion inside them.
+  return isBlockedTextContainer(node) && node.nodeName !== "RUBY";
+}
+
+function nextOutsideSubtree(walker, root) {
+  while (walker.currentNode !== root) {
+    const sibling = walker.nextSibling();
+    if (sibling) {
+      return sibling;
+    }
+    if (!walker.parentNode()) {
+      return null;
+    }
+  }
+  return null;
 }
 
 function assertRuntime(runtime, label) {

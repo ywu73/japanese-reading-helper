@@ -3875,6 +3875,9 @@
   ]);
   var convertedRubySnapshots = /* @__PURE__ */ new WeakMap();
   var KANA_ONLY2 = /^[\u3041-\u3096\u309d\u309e\u30a1-\u30fa\u30fd\u30feー・\s]+$/u;
+  function isBlockedTextContainer(node) {
+    return node?.nodeType === 1 && BLOCKED_TAGS.has(node.tagName);
+  }
   function shouldSkipTextNode(node, checkedElements) {
     if (!node || node.nodeType !== 3 || !node.parentElement || !node.textContent.trim()) {
       return true;
@@ -3887,7 +3890,7 @@
         break;
       }
       visited.push(element);
-      if (BLOCKED_TAGS.has(element.tagName)) {
+      if (isBlockedTextContainer(element)) {
         skip = true;
         break;
       }
@@ -4307,7 +4310,7 @@
       this.#scheduleNodeDrain();
     }
     #collectTextNodes(root) {
-      if (!root?.isConnected) {
+      if (!root?.isConnected || hasBlockedTextAncestor(root)) {
         return;
       }
       if (![1, 3, 9, 11].includes(root.nodeType)) {
@@ -4370,6 +4373,7 @@
       }
       let processed = 0;
       let backgroundProcessed = 0;
+      let checkedJob = null;
       const startedAt = this.now();
       this.scanStyleCache = /* @__PURE__ */ new WeakMap();
       while (this.#hasRunnableWork(backgroundProcessed > 0) && processed < this.scanBatchSize && backgroundProcessed < 32 && (processed === 0 || this.now() - startedAt < this.scanBudgetMs) && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
@@ -4389,6 +4393,14 @@
           continue;
         }
         const job = this.scanJobs[0];
+        if (job !== checkedJob) {
+          checkedJob = job;
+          if (hasBlockedTextAncestor(job.root)) {
+            this.scanJobs.shift();
+            processed += 1;
+            continue;
+          }
+        }
         const node = job.next;
         if (!node || !job.root.isConnected) {
           this.scanJobs.shift();
@@ -4402,7 +4414,7 @@
           continue;
         }
         job.walker.currentNode = node;
-        job.next = job.walker.nextNode();
+        job.next = isPrunedTextContainer(node) ? nextOutsideSubtree(job.walker, job.root) : job.walker.nextNode();
         if (node.nodeType === 3) {
           this.#processTextNode(node);
         } else if (this.kanjiRuntime && node.nodeName === "RUBY") {
@@ -4610,6 +4622,29 @@
       }
     }
   };
+  function hasBlockedTextAncestor(node) {
+    for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+      if (isPrunedTextContainer(parent)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  function isPrunedTextContainer(node) {
+    return isBlockedTextContainer(node) && node.nodeName !== "RUBY";
+  }
+  function nextOutsideSubtree(walker, root) {
+    while (walker.currentNode !== root) {
+      const sibling = walker.nextSibling();
+      if (sibling) {
+        return sibling;
+      }
+      if (!walker.parentNode()) {
+        return null;
+      }
+    }
+    return null;
+  }
   function assertRuntime(runtime, label) {
     if (!runtime || typeof runtime.plan !== "function" || typeof runtime.forget !== "function" || typeof runtime.pause !== "function" || typeof runtime.resume !== "function") {
       throw new TypeError(`${label} annotation requires a runtime interface.`);

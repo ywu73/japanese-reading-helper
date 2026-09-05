@@ -8,6 +8,12 @@ const BLOCKED_TAGS = new Set([
 const convertedRubySnapshots = new WeakMap();
 const KANA_ONLY = /^[\u3041-\u3096\u309d\u309e\u30a1-\u30fa\u30fd\u30feー・\s]+$/u;
 
+// These tags exclude all descendant text regardless of styling. Author RUBY
+// elements can still have their readings converted by the coordinator.
+export function isBlockedTextContainer(node) {
+  return node?.nodeType === 1 && BLOCKED_TAGS.has(node.tagName);
+}
+
 // Supply a fresh cache for each synchronous scan slice. Never retain computed
 // visibility across a yield or across our own DOM writes.
 export function shouldSkipTextNode(node, checkedElements) {
@@ -23,7 +29,7 @@ export function shouldSkipTextNode(node, checkedElements) {
       break;
     }
     visited.push(element);
-    if (BLOCKED_TAGS.has(element.tagName)) {
+    if (isBlockedTextContainer(element)) {
       skip = true;
       break;
     }
