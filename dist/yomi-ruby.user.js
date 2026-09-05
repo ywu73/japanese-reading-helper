@@ -6511,24 +6511,60 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
   var import_DynamicDictionaries = __toESM(require_DynamicDictionaries(), 1);
   var import_gunzip_min = __toESM(require_gunzip_min(), 1);
   function buildStaticTokenizer(dictionaryFiles) {
+    return createTokenizer((name) => decompress(dictionaryFiles, name));
+  }
+  async function buildStaticTokenizerAsync(dictionaryFiles, { signal } = {}) {
+    throwIfAborted4(signal);
+    if (typeof globalThis.DecompressionStream !== "function") {
+      return buildStaticTokenizer(dictionaryFiles);
+    }
+    const decoded = /* @__PURE__ */ new Map();
+    try {
+      for (const [name, compressed] of dictionaryFiles) {
+        throwIfAborted4(signal);
+        if (!(compressed instanceof ArrayBuffer)) {
+          throw new Error(`Verified dictionary asset not found: ${name}`);
+        }
+        const stream = new Blob([compressed]).stream().pipeThrough(
+          new DecompressionStream("gzip"),
+          { signal }
+        );
+        decoded.set(name, await new Response(stream).arrayBuffer());
+      }
+      throwIfAborted4(signal);
+      return createTokenizer((name) => {
+        const bytes = decoded.get(name);
+        if (!(bytes instanceof ArrayBuffer)) {
+          throw new Error(`Verified dictionary asset not found: ${name}`);
+        }
+        return bytes;
+      });
+    } catch (error) {
+      throwIfAborted4(signal);
+      throw error;
+    } finally {
+      decoded.clear();
+    }
+  }
+  function createTokenizer(decompress2) {
     const dictionaries = new import_DynamicDictionaries.default();
     dictionaries.loadTrie(
-      new Int32Array(decompress(dictionaryFiles, "base.dat.gz")),
-      new Int32Array(decompress(dictionaryFiles, "check.dat.gz"))
+      new Int32Array(decompress2("base.dat.gz")),
+      new Int32Array(decompress2("check.dat.gz"))
     );
     dictionaries.loadTokenInfoDictionaries(
-      new Uint8Array(decompress(dictionaryFiles, "tid.dat.gz")),
-      new Uint8Array(decompress(dictionaryFiles, "tid_pos.dat.gz")),
-      new Uint8Array(decompress(dictionaryFiles, "tid_map.dat.gz"))
+      new Uint8Array(decompress2("tid.dat.gz")),
+      new Uint8Array(decompress2("tid_pos.dat.gz")),
+      new Uint8Array(decompress2("tid_map.dat.gz"))
     );
-    dictionaries.loadConnectionCosts(new Int16Array(decompress(dictionaryFiles, "cc.dat.gz")));
+    dictionaries.loadConnectionCosts(new Int16Array(decompress2("cc.dat.gz")));
     dictionaries.loadUnknownDictionaries(
-      new Uint8Array(decompress(dictionaryFiles, "unk.dat.gz")),
-      new Uint8Array(decompress(dictionaryFiles, "unk_pos.dat.gz")),
-      new Uint8Array(decompress(dictionaryFiles, "unk_map.dat.gz")),
-      new Uint8Array(decompress(dictionaryFiles, "unk_char.dat.gz")),
-      new Uint32Array(decompress(dictionaryFiles, "unk_compat.dat.gz")),
-      new Uint8Array(decompress(dictionaryFiles, "unk_invoke.dat.gz"))
+      new Uint8Array(decompress2("unk.dat.gz")),
+      new Uint8Array(decompress2("unk_pos.dat.gz")),
+      new Uint8Array(decompress2("unk_map.dat.gz")),
+      new Uint8Array(decompress2("unk_char.dat.gz")),
+      new Uint32Array(decompress2("unk_compat.dat.gz")),
+      new Uint8Array(decompress2("unk_invoke.dat.gz"))
     );
     return new import_Tokenizer.default(dictionaries);
   }
@@ -6540,6 +6576,11 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
     const gunzip = new import_gunzip_min.default.Zlib.Gunzip(new Uint8Array(compressed));
     const bytes = gunzip.decompress();
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  }
+  function throwIfAborted4(signal) {
+    if (signal?.aborted) {
+      throw new Error("Dictionary initialization aborted.");
+    }
   }
 
   // src/vendor-loader.js
@@ -6559,7 +6600,7 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
     if (!subtle) {
       throw new Error("Web Crypto SHA-256 is unavailable; refusing to load dictionary assets.");
     }
-    throwIfAborted4(signal);
+    throwIfAborted5(signal);
     const dictionaryEntries = await Promise.all(
       manifest.dictionary.map(async (asset) => [
         asset.name,
@@ -6568,16 +6609,16 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
     );
     const dictionaryFiles = new Map(dictionaryEntries);
     try {
-      throwIfAborted4(signal);
-      const tokenizer = buildStaticTokenizer(dictionaryFiles);
-      throwIfAborted4(signal);
+      throwIfAborted5(signal);
+      const tokenizer = await buildStaticTokenizerAsync(dictionaryFiles, { signal });
+      throwIfAborted5(signal);
       return tokenizer;
     } finally {
       dictionaryFiles.clear();
     }
   }
   async function readAndVerifyResource(asset, getResourceUrl, gmRequest, subtle = globalThis.crypto?.subtle, signal) {
-    throwIfAborted4(signal);
+    throwIfAborted5(signal);
     validateAssetRecord(asset);
     if (!asset.resourceName || typeof asset.resourceName !== "string") {
       throw new Error(`Missing preloaded resource name for ${asset.name}`);
@@ -6591,12 +6632,12 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
     return verifyAssetBytes(asset, bytes, subtle, signal);
   }
   async function verifyAssetBytes(asset, bytes, subtle, signal) {
-    throwIfAborted4(signal);
+    throwIfAborted5(signal);
     if (bytes.byteLength !== asset.size) {
       throw new Error(`Size mismatch for ${asset.name}: expected ${asset.size}, received ${bytes.byteLength}`);
     }
     const digest = toHex(await subtle.digest("SHA-256", bytes));
-    throwIfAborted4(signal);
+    throwIfAborted5(signal);
     if (digest !== asset.sha256) {
       throw new Error(`SHA-256 mismatch for ${asset.name}: expected ${asset.sha256}, received ${digest}`);
     }
@@ -6673,7 +6714,7 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
       }
     });
   }
-  function throwIfAborted4(signal) {
+  function throwIfAborted5(signal) {
     if (signal?.aborted) {
       throw new Error("Asset loading aborted.");
     }

@@ -71,7 +71,7 @@ cross-fallback to the other provider.
 | `jsdom` | 29.1.1 | MIT | DOM integration tests and fixture generation |
 | `kuromoji` | 0.1.2 | Apache-2.0 | Statically bundled tokenizer modules and reproducible verification |
 | `doublearray` | 0.0.2 | MIT | Transitive runtime trie implementation bundled through Kuromoji |
-| `zlibjs` | 0.3.1 | MIT | Transitive runtime decompression for verified dictionary bytes |
+| `zlibjs` | 0.3.1 | MIT | Bundled decompression for verified dictionary bytes when native GZIP support is absent; also retained for synchronous verification tools |
 
 The three direct development dependencies are exact in `package.json`.
 `doublearray` and `zlibjs` are exact transitive runtime versions in

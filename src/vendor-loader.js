@@ -1,4 +1,4 @@
-import { buildStaticTokenizer } from "./static-tokenizer.js";
+import { buildStaticTokenizerAsync } from "./static-tokenizer.js";
 
 export async function loadVerifiedKuromoji({
   manifest,
@@ -28,7 +28,7 @@ export async function loadVerifiedKuromoji({
 
   try {
     throwIfAborted(signal);
-    const tokenizer = buildStaticTokenizer(dictionaryFiles);
+    const tokenizer = await buildStaticTokenizerAsync(dictionaryFiles, { signal });
     throwIfAborted(signal);
     return tokenizer;
   } finally {

@@ -25,6 +25,9 @@ test("builds a tokenizer from verified dictionaries when dynamic JavaScript eval
     return `blob:tampermonkey-resource/${resourceName}`;
   };
   const gmRequest = asyncRequestFromPinnedPackage(requestedUrls);
+  // Node lazily initializes its HTTP implementation using the global Function
+  // intrinsic. Browsers already expose Response before page CSP is applied.
+  void globalThis.Response;
   const NativeFunction = globalThis.Function;
 
   globalThis.Function = function BlockedDynamicFunction() {

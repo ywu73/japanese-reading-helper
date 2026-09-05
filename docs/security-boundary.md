@@ -53,6 +53,15 @@ accepts only `blob:`, `data:`, `chrome-extension:`, or `moz-extension:` URLs
 returned by `GM_getResourceURL`; it rejects HTTP(S), verifies exact byte length
 and SHA-256, and has no remote fallback.
 
+After every compressed asset passes verification, local initialization uses
+`DecompressionStream("gzip")` when that browser API exists. Streams run sequentially
+and receive the initialization abort signal. Native construction or decoding
+failure rejects initialization; it does not retry through another decoder. Only
+API absence selects the existing statically bundled `zlibjs` decoder. This changes
+in-memory decompression, not asset acquisition or executable loading, and creates
+no Worker, additional request or persistent cache. The loader waits for complete
+initialization before releasing its temporary dictionary Map.
+
 Version 0.6.0 deliberately retains preloading of all twelve dictionary
 resources. It does not claim that the proposed roughly 17 MiB lazy Tampermonkey
 cache has been implemented or verified.
