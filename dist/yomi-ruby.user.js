@@ -5816,6 +5816,47 @@
     }
   }
 
+  // src/record-waiters.js
+  var RecordWaiters = class {
+    constructor() {
+      this.entriesByRecord = /* @__PURE__ */ new WeakMap();
+    }
+    add(record, entry) {
+      entry.waiters.add(record);
+      let entries = this.entriesByRecord.get(record);
+      if (!entries) {
+        entries = /* @__PURE__ */ new Set();
+        this.entriesByRecord.set(record, entries);
+      }
+      entries.add(entry);
+    }
+    forget(record) {
+      const entries = this.entriesByRecord.get(record);
+      if (!entries) {
+        return;
+      }
+      for (const entry of entries) {
+        entry.waiters.delete(record);
+      }
+      this.entriesByRecord.delete(record);
+    }
+    take(entry) {
+      const records = [...entry.waiters];
+      entry.waiters.clear();
+      for (const record of records) {
+        const entries = this.entriesByRecord.get(record);
+        entries.delete(entry);
+        if (entries.size === 0) {
+          this.entriesByRecord.delete(record);
+        }
+      }
+      return records;
+    }
+    clear() {
+      this.entriesByRecord = /* @__PURE__ */ new WeakMap();
+    }
+  };
+
   // src/kanji-runtime.js
   var KanjiRuntime = class {
     constructor({ mode, analyzerFactories, onPlanChanged = () => {
@@ -5834,6 +5875,7 @@
       this.generation = 0;
       this.abortController = null;
       this.cache = /* @__PURE__ */ new Map();
+      this.recordWaiters = new RecordWaiters();
       this.queue = [];
       this.processing = false;
       this.flushScheduled = false;
@@ -5900,15 +5942,13 @@
         this.queue.push(text);
       }
       if (entry.status === "pending") {
-        entry.waiters.add(record);
+        this.recordWaiters.add(record, entry);
       }
       this.#drain();
       return { status: entry.status, ranges: entry.ranges };
     }
     forget(record) {
-      for (const entry of this.cache.values()) {
-        entry.waiters?.delete(record);
-      }
+      this.recordWaiters.forget(record);
     }
     stop() {
       this.disable();
@@ -6014,14 +6054,14 @@
     #publish(entry, ranges) {
       entry.status = ranges.length > 0 ? "success" : "failure";
       entry.ranges = ranges;
-      const waiters = [...entry.waiters];
-      entry.waiters.clear();
+      const waiters = this.recordWaiters.take(entry);
       for (const record of waiters) {
         this.onPlanChanged(record);
       }
     }
     #clearCycle() {
       this.cache.clear();
+      this.recordWaiters.clear();
       this.queue.length = 0;
       this.processing = false;
       this.flushScheduled = false;
@@ -6073,6 +6113,7 @@
       this.generation = 0;
       this.abortController = null;
       this.cache = /* @__PURE__ */ new Map();
+      this.recordWaiters = new RecordWaiters();
       this.queue = [];
       this.flushScheduled = false;
       this.processing = false;
@@ -6140,7 +6181,7 @@
           added = true;
         }
         if (entry.status === "pending") {
-          entry.waiters.add(record);
+          this.recordWaiters.add(record, entry);
         }
       }
       if (added) {
@@ -6161,9 +6202,7 @@
       return { status, ranges, reservations };
     }
     forget(record) {
-      for (const entry of this.cache.values()) {
-        entry.waiters?.delete(record);
-      }
+      this.recordWaiters.forget(record);
     }
     hasPendingWork() {
       return this.processing || this.flushScheduled || this.queue.length > 0;
@@ -6235,10 +6274,9 @@
         const translation = translations instanceof Map ? translations.get(phrase) : null;
         entry.status = typeof translation === "string" && translation.length > 0 ? "success" : "failure";
         entry.translation = entry.status === "success" ? translation : null;
-        for (const record of entry.waiters) {
+        for (const record of this.recordWaiters.take(entry)) {
           affected.add(record);
         }
-        entry.waiters.clear();
       }
       for (const record of affected) {
         this.onPlanChanged(record);
@@ -6246,6 +6284,7 @@
     }
     #clearCycle() {
       this.cache.clear();
+      this.recordWaiters.clear();
       this.queue.length = 0;
       this.flushScheduled = false;
       this.processing = false;

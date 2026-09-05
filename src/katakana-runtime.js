@@ -1,4 +1,5 @@
 import { findKatakanaMatches } from "./katakana.js";
+import { RecordWaiters } from "./record-waiters.js";
 
 export class KatakanaRuntime {
   constructor({ provider, translatorFactories, onPlanChanged = () => {}, onIdle = () => {} }) {
@@ -15,6 +16,7 @@ export class KatakanaRuntime {
     this.generation = 0;
     this.abortController = null;
     this.cache = new Map();
+    this.recordWaiters = new RecordWaiters();
     this.queue = [];
     this.flushScheduled = false;
     this.processing = false;
@@ -88,7 +90,7 @@ export class KatakanaRuntime {
         added = true;
       }
       if (entry.status === "pending") {
-        entry.waiters.add(record);
+        this.recordWaiters.add(record, entry);
       }
     }
     if (added) {
@@ -116,9 +118,7 @@ export class KatakanaRuntime {
   }
 
   forget(record) {
-    for (const entry of this.cache.values()) {
-      entry.waiters?.delete(record);
-    }
+    this.recordWaiters.forget(record);
   }
 
   hasPendingWork() {
@@ -205,10 +205,9 @@ export class KatakanaRuntime {
         ? "success"
         : "failure";
       entry.translation = entry.status === "success" ? translation : null;
-      for (const record of entry.waiters) {
+      for (const record of this.recordWaiters.take(entry)) {
         affected.add(record);
       }
-      entry.waiters.clear();
     }
     for (const record of affected) {
       this.onPlanChanged(record);
@@ -217,6 +216,7 @@ export class KatakanaRuntime {
 
   #clearCycle() {
     this.cache.clear();
+    this.recordWaiters.clear();
     this.queue.length = 0;
     this.flushScheduled = false;
     this.processing = false;

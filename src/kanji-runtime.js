@@ -1,3 +1,5 @@
+import { RecordWaiters } from "./record-waiters.js";
+
 export class KanjiRuntime {
   constructor({ mode, analyzerFactories, onPlanChanged = () => {}, onIdle = () => {} }) {
     if (!analyzerFactories || typeof analyzerFactories[mode] !== "function") {
@@ -13,6 +15,7 @@ export class KanjiRuntime {
     this.generation = 0;
     this.abortController = null;
     this.cache = new Map();
+    this.recordWaiters = new RecordWaiters();
     this.queue = [];
     this.processing = false;
     this.flushScheduled = false;
@@ -85,16 +88,14 @@ export class KanjiRuntime {
       this.queue.push(text);
     }
     if (entry.status === "pending") {
-      entry.waiters.add(record);
+      this.recordWaiters.add(record, entry);
     }
     this.#drain();
     return { status: entry.status, ranges: entry.ranges };
   }
 
   forget(record) {
-    for (const entry of this.cache.values()) {
-      entry.waiters?.delete(record);
-    }
+    this.recordWaiters.forget(record);
   }
 
   stop() {
@@ -214,8 +215,7 @@ export class KanjiRuntime {
   #publish(entry, ranges) {
     entry.status = ranges.length > 0 ? "success" : "failure";
     entry.ranges = ranges;
-    const waiters = [...entry.waiters];
-    entry.waiters.clear();
+    const waiters = this.recordWaiters.take(entry);
     for (const record of waiters) {
       this.onPlanChanged(record);
     }
@@ -223,6 +223,7 @@ export class KanjiRuntime {
 
   #clearCycle() {
     this.cache.clear();
+    this.recordWaiters.clear();
     this.queue.length = 0;
     this.processing = false;
     this.flushScheduled = false;
