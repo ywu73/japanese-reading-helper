@@ -124,3 +124,28 @@ Online readings remain dependent on provider output. Bing returned
 prove a correct Japanese reading. Local mode left the fixture's rare unknown
 characters unchanged. This release does not add a dictionary cross-check to
 online results or promise contextual reading accuracy.
+
+## Publication and final checks
+
+- Implementation commit: `e2ac2da`; release/verification commit: `e4f4349`.
+  Both were fast-forwarded into `main`; only `main` was pushed. No task branch
+  was pushed or deleted.
+- Merged `main` repeated all **238 tests** and the build audit successfully,
+  with a clean worktree and unchanged artifact digest.
+- [GitHub Validate run 34679318895](https://github.com/ywu73/japanese-reading-helper/actions/runs/34679318895)
+  passed for `e4f4349bb26d68cd469eee9e1c6f3f12c31dbb6f`.
+- The existing [Greasy Fork script 589223](https://greasyfork.org/zh-CN/scripts/589223)
+  was updated through the author interface. Its public page and description
+  show **0.6.3**; no new script listing was created.
+- Public GitHub Raw download is byte-identical to the artifact above.
+- Greasy Fork's served download is **260265 bytes**, SHA-256
+  `bfed520afc7f20906e90b17f278af7fa55ee7c7b6db2fcaf8505c6e1eec1780e`.
+  It replaces and repositions only `@downloadURL` and `@updateURL` with its
+  own distribution URLs. Removing exactly those two metadata lines yields
+  byte-identical content; the executable body is unchanged. Public download
+  retrieval used the existing proxy after a direct connection reset.
+- The refreshed Tampermonkey dashboard lists the existing Japanese Reading
+  Helper entry as **0.6.3**. Final menus confirmed Chinese locale, Local kanji,
+  Google katakana, and both test-origin features disabled.
+- The original Chinese-guide checkout and its pre-existing modified/untracked
+  files were preserved.
