@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Japanese Reading Helper 0.6.3 browser verification</title>
+<style>
+  body { font: 18px/2 system-ui; max-width: 1000px; margin: 24px auto; }
+  button { margin: 4px; padding: 8px; } pre { font: 13px/1.45 monospace; white-space: pre-wrap; }
+  .concealed { display: none; } #report { border: 1px solid #aaa; padding: 12px; }
+</style>
+<h1>Japanese Reading Helper 0.6.3 verification</h1>
+<p>Use the installed Tampermonkey menus to enable or disable the two features.</p>
+<nav>
+  <button id="snapshot">Snapshot</button>
+  <button id="reveal">Reveal content</button>
+  <button id="conceal">Hide content</button>
+  <button id="append">Add 200 paragraphs</button>
+  <button id="remove">Remove added paragraphs</button>
+  <button id="rollback">Check complete rollback</button>
+</nav>
+<pre id="report" aria-live="polite">Loading fixture.</pre>
+<pre id="readings"></pre>
+<pre id="timing"></pre>
+<main id="article">
+  <p id="ordinary">今日は東京で日本語を勉強し、食べる方法を思う。</p>
+  <p id="katakana">ゲームとテレビとコンピューター。</p>
+  <p id="mixed">前<strong>日本語</strong>後 <a href="#article">東京</a> 𠮷と龘。</p>
+  <ruby id="author">東京<rt title="original"><span>とうきょう</span></rt></ruby>
+  <ruby id="terminator">ゲーム<rt class="katakana-terminator-rt">game</rt></ruby>
+  <section id="hidden" hidden><p>大阪と学校。</p></section>
+  <section id="styled" class="concealed"><p>京都と新聞。</p></section>
+  <details id="details"><summary>Details</summary><p>大学と時間。</p></details>
+  <form><label>日本語<input value="東京"></label></form>
+  <div contenteditable="true">日本語とゲーム</div>
+  <pre>東京とゲーム</pre><code>日本語とテレビ</code>
+  <section id="extra"></section>
+</main>
+<script src="/smoke.js"></script>
+</html>

@@ -1,4 +1,4 @@
-# Desktop Chrome + Tampermonkey manual test plan — Japanese Reading Helper 0.6.2
+# Desktop Chrome + Tampermonkey manual test plan — Japanese Reading Helper 0.6.3
 
 Do not install this candidate, mutate the user's Chrome/Tampermonkey state,
 operate a real site, or disable a separately installed Katakana Terminator
@@ -6,11 +6,22 @@ until the user explicitly authorizes the relevant action. Record the exact
 candidate path, size, SHA-256, Chrome version, Tampermonkey version, proxy state,
 origin, and timestamps.
 
+For the 0.6.3 lifecycle regression fixture, run
+`node scripts/serve-browser-smoke.mjs` and open `http://127.0.0.1:8767/`.
+Exercise Reveal/Hide, append/remove 200 paragraphs, mode/provider switches,
+and Check complete rollback after disabling both features. Snapshot reports
+source projection, unsafe annotations, original author-node identity, and its
+click listener. Repeat Local activation at `/?csp`; use port 8768 to check a
+separate unconfigured origin. Read settled snapshots after queued work, not
+the immediate pre-observer snapshot printed by the action button. The
+`firstAnnotationSinceActionMs` field measures from the last fixture action;
+manual menu wait time must not be presented as provider latency.
+
 ## 1. Artifact, metadata, install, and update
 
 1. Confirm the installed file is byte-identical to `dist/yomi-ruby.user.js`.
 2. Inspect the combined public `@name`, localized name metadata, namespace,
-   `@version 0.6.2`, MIT
+   `@version 0.6.3`, MIT
    metadata, homepage/support/download/update URLs, two ordinary web `@match`
    values, `@noframes`, twelve SRI `@resource` values, exact grants, and exactly
    three `@connect` values: `translate.googleapis.com`, `www.bing.com`, and
@@ -240,7 +251,7 @@ Japanese Reading Helper-owned UI. Confirm:
 
 ## 8. Failure, CSP, and real-site gates
 
-Confirm 0.6.2 still installs/preloads all twelve Kuromoji resources and performs
+Confirm 0.6.3 still installs/preloads all twelve Kuromoji resources and performs
 no runtime dynamic dictionary download/cache/delete flow. Treat the proposed
 roughly 17 MiB lazy cache as unimplemented rather than as a failed fallback.
 

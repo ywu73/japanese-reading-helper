@@ -3,7 +3,7 @@
 // @name:zh-CN   日语阅读助手 — 汉字罗马音与片假名英译
 // @name:en      Japanese Reading Helper — Kanji Romaji & Katakana English
 // @namespace    yomi-ruby.local
-// @version      0.6.2
+// @version      0.6.3
 // @description  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:en  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:zh-CN  为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。
@@ -3082,7 +3082,7 @@
     let operationQueue = Promise.resolve();
     let requestSequence = 0;
     let lastBatchStartedAt = null;
-    const romanizeWords = (words, { signal } = {}) => {
+    const romanizeWords = (words, { signal, onBatch } = {}) => {
       const operation = operationQueue.then(async () => {
         throwIfAborted(signal);
         const uniqueWords = [...new Set(words.filter((word) => isEligibleWord(
@@ -3099,6 +3099,8 @@
           for (const [word, romaji] of romanizedBatch) {
             readings.set(word, romaji);
           }
+          throwIfAborted(signal);
+          onBatch?.({ words: batch, readings: romanizedBatch });
         }
         return readings;
       });
@@ -3882,15 +3884,22 @@
     if (!node || node.nodeType !== 3 || !node.parentElement || !node.textContent.trim()) {
       return true;
     }
+    return shouldSkipTextContainer(node.parentElement, checkedElements);
+  }
+  function shouldSkipTextContainer(container, checkedElements, allowRuby = false) {
     const visited = [];
     let skip = false;
-    for (let element = node.parentElement; element; element = element.parentElement) {
+    for (let element = container; element; element = element.parentElement) {
+      if (element.tagName === "DETAILS" && !element.open && !element.querySelector(":scope > summary")?.contains(container)) {
+        skip = true;
+        break;
+      }
       if (checkedElements?.has(element)) {
         skip = checkedElements.get(element);
         break;
       }
       visited.push(element);
-      if (isBlockedTextContainer(element)) {
+      if (isBlockedTextContainer(element) && !(allowRuby && element.tagName === "RUBY")) {
         skip = true;
         break;
       }
@@ -3931,6 +3940,10 @@
       if (isKatakanaTerminatorRuby(ruby)) {
         continue;
       }
+      if (shouldSkipTextContainer(ruby, void 0, true)) {
+        restoreConvertedKanaRuby(ruby);
+        continue;
+      }
       const rtElements = [...ruby.querySelectorAll(":scope > rt")];
       const baseText = [...ruby.childNodes].filter((node) => !(node.nodeType === 1 && ["RT", "RP"].includes(node.tagName))).map((node) => node.textContent).join("");
       if (!new RegExp("\\p{Script=Han}", "u").test(baseText)) {
@@ -3946,7 +3959,7 @@
           continue;
         }
         convertedRubySnapshots.set(rt, {
-          text: rt.textContent,
+          children: [...rt.childNodes],
           attributes: [...rt.attributes].map(({ name, value }) => [name, value])
         });
         rt.textContent = romaji;
@@ -3964,7 +3977,7 @@
       if (!snapshot) {
         continue;
       }
-      rt.textContent = snapshot.text;
+      rt.replaceChildren(...snapshot.children);
       for (const attribute of [...rt.attributes]) {
         rt.removeAttribute(attribute.name);
       }
@@ -4104,6 +4117,9 @@
       this.records = /* @__PURE__ */ new Set();
       this.nodeRecords = /* @__PURE__ */ new WeakMap();
       this.pendingRoots = /* @__PURE__ */ new Set();
+      this.revalidationRequested = false;
+      this.reprocessIterator = null;
+      this.reprocessSeen = /* @__PURE__ */ new WeakSet();
       this.scanJobs = [];
       this.scanStyleCache = null;
       this.flushTimer = null;
@@ -4181,6 +4197,8 @@
         this.mutationObserver.observe(this.document.body ?? this.document.documentElement, {
           childList: true,
           characterData: true,
+          attributes: true,
+          attributeFilter: ["hidden", "inert", "aria-hidden", "style", "class", "contenteditable", "open"],
           subtree: true
         });
       }
@@ -4202,6 +4220,8 @@
       this.viewport = null;
       this.#cancelScheduledWork();
       this.pendingRoots.clear();
+      this.revalidationRequested = false;
+      this.reprocessIterator = null;
       this.scanJobs.length = 0;
       for (const record of this.records) {
         this.#restoreRecord(record);
@@ -4223,8 +4243,7 @@
       }
       this.kanjiRuntime?.resume();
       this.katakanaRuntime?.resume();
-      this.#discardDetachedRecords();
-      this.#reprocessAll();
+      this.#reprocessAll({ deferred: true });
       this.#queueRoot(this.document.body ?? this.document.documentElement, { immediate: true });
     }
     #onMutations(mutations) {
@@ -4232,6 +4251,12 @@
         return;
       }
       for (const mutation of mutations) {
+        if (mutation.type === "attributes") {
+          if (mutation.target.closest?.("[data-yomi-ruby-generated], [data-yomi-ruby-converted-rt], [data-yomi-ruby-status]")) continue;
+          this.pendingRoots.add(mutation.target);
+          this.revalidationRequested = true;
+          continue;
+        }
         if (mutation.type === "characterData") {
           const record = this.nodeRecords.get(mutation.target);
           if (record && this.#recordIsCurrent(record)) {
@@ -4292,6 +4317,8 @@
       }
       const roots = this.pendingRoots;
       this.pendingRoots = /* @__PURE__ */ new Set();
+      const revalidate = this.revalidationRequested;
+      this.revalidationRequested = false;
       for (const root of roots) {
         if (!root.isConnected) {
           continue;
@@ -4304,12 +4331,12 @@
           }
         }
         if (!covered) {
-          this.#collectTextNodes(root);
+          this.#collectTextNodes(root, revalidate);
         }
       }
       this.#scheduleNodeDrain();
     }
-    #collectTextNodes(root) {
+    #collectTextNodes(root, revalidate = false) {
       if (!root?.isConnected || hasBlockedTextAncestor(root)) {
         return;
       }
@@ -4320,7 +4347,7 @@
         root,
         this.document.defaultView.NodeFilter.SHOW_ELEMENT | this.document.defaultView.NodeFilter.SHOW_TEXT
       );
-      this.scanJobs.push({ root, walker, next: root });
+      this.scanJobs.push({ root, walker, next: root, revalidate, revalidated: /* @__PURE__ */ new WeakSet() });
     }
     #processTextNode(node) {
       const owned = this.nodeRecords.get(node);
@@ -4383,6 +4410,16 @@
           processed += 1;
           continue;
         }
+        if (this.reprocessIterator) {
+          const next = this.reprocessIterator.next();
+          if (next.done) {
+            this.reprocessIterator = null;
+          } else if (!this.reprocessSeen.has(next.value) && !this.viewport?.has(next.value)) {
+            this.#processRecord(next.value);
+          }
+          processed += 1;
+          continue;
+        }
         if (this.scanJobs.length === 0) {
           const record = this.viewport?.takeBackground();
           if (record) {
@@ -4415,7 +4452,12 @@
         }
         job.walker.currentNode = node;
         job.next = isPrunedTextContainer(node) ? nextOutsideSubtree(job.walker, job.root) : job.walker.nextNode();
-        if (node.nodeType === 3) {
+        const owned = job.revalidate && this.nodeRecords.get(node);
+        if (owned && !job.revalidated.has(owned)) {
+          job.revalidated.add(owned);
+          if (!this.viewport?.has(owned)) this.#processRecord(owned);
+          else this.#processTextNode(node);
+        } else if (node.nodeType === 3) {
           this.#processTextNode(node);
         } else if (this.kanjiRuntime && node.nodeName === "RUBY") {
           if (convertExistingKanaRuby(node, { descendants: false })) {
@@ -4428,7 +4470,7 @@
       this.#scheduleNodeDrain();
     }
     #hasRunnableWork(continuingBackgroundBatch = false) {
-      return this.scanJobs.length > 0 || this.viewport?.hasReady || this.viewport?.hasDeferred && (continuingBackgroundBatch || !this.kanjiRuntime?.hasPendingWork?.() && !this.katakanaRuntime?.hasPendingWork?.());
+      return this.reprocessIterator || this.scanJobs.length > 0 || this.viewport?.hasReady || this.viewport?.hasDeferred && (continuingBackgroundBatch || !this.kanjiRuntime?.hasPendingWork?.() && !this.katakanaRuntime?.hasPendingWork?.());
     }
     #activateDeferred(record) {
       if (!this.#recordIsCurrent(record) || shouldSkipTextNode(record.currentNodes[0])) {
@@ -4438,7 +4480,8 @@
       this.#processRecord(record);
     }
     #processRecord(record) {
-      if (!this.#recordIsCurrent(record)) {
+      if (this.reprocessIterator) this.reprocessSeen.add(record);
+      if (!this.#recordIsCurrent(record) || shouldSkipTextContainer(record.currentNodes[0]?.parentElement, this.scanStyleCache)) {
         this.#discardRecord(record);
         return;
       }
@@ -4459,8 +4502,15 @@
       annotations.sort((left, right) => left.start - right.start || left.end - right.end);
       this.#renderRecord(record, annotations);
     }
-    #reprocessAll() {
+    #reprocessAll({ deferred = false } = {}) {
       if (this.hidden) {
+        return;
+      }
+      this.reprocessIterator = null;
+      if (deferred) {
+        this.reprocessSeen = /* @__PURE__ */ new WeakSet();
+        this.reprocessIterator = this.records.values();
+        this.#scheduleNodeDrain();
         return;
       }
       for (const record of [...this.records]) {
@@ -4587,13 +4637,6 @@
       }
       for (const record of found) {
         if (record.currentNodes.some((node) => !node.isConnected)) {
-          this.#discardRecord(record);
-        }
-      }
-    }
-    #discardDetachedRecords() {
-      for (const record of [...this.records]) {
-        if (!this.#recordIsCurrent(record)) {
           this.#discardRecord(record);
         }
       }
@@ -5461,7 +5504,7 @@
       throw new TypeError("maxEncodedUrlLength must be a positive integer.");
     }
     let operationQueue = Promise.resolve();
-    const romanizeWords = (words, { signal } = {}) => {
+    const romanizeWords = (words, { signal, onBatch } = {}) => {
       const operation = operationQueue.then(async () => {
         throwIfAborted3(signal);
         const uniqueWords = [...new Set(words.filter((word) => isEligibleWord2(
@@ -5509,6 +5552,8 @@
               for (const [word, romaji] of batchReadings) {
                 readings.set(word, romaji);
               }
+              throwIfAborted3(signal);
+              onBatch?.({ words: batch.words, readings: batchReadings });
             } else {
               for (const word of batch.words) {
                 const responseText = await fetchUrl(buildSingleWordUrl(word));
@@ -5516,6 +5561,8 @@
                 if (romaji) {
                   readings.set(word, romaji);
                 }
+                throwIfAborted3(signal);
+                onBatch?.({ words: [word], readings: new Map(romaji ? [[word, romaji]] : []) });
               }
             }
           }
@@ -5747,20 +5794,29 @@
     const segmenter = new Segmenter("ja", { granularity: "word" });
     const readingCache = /* @__PURE__ */ new Map();
     const pendingReadings = /* @__PURE__ */ new Map();
+    const progressListeners = /* @__PURE__ */ new Set();
     const analyze = async (text, options) => (await analyzeBatch([text], options))[0];
     analyze.analyzeBatch = analyzeBatch;
     return analyze;
-    async function analyzeBatch(texts, { signal } = {}) {
+    async function analyzeBatch(texts, { signal, onProgress } = {}) {
       const prepared = texts.map(prepareText);
       const candidates = [...new Set(prepared.flatMap(({ candidates: candidates2 }) => candidates2))];
+      const notify = (changed) => {
+        if (!signal?.aborted && onProgress && candidates.some((word) => changed.has(word))) {
+          onProgress(prepared.map(({ text, entries }) => renderSegments(text, entries, readingCache)));
+        }
+      };
       let readings = /* @__PURE__ */ new Map();
       if (candidates.length > 0) {
+        progressListeners.add(notify);
         try {
           readings = await resolveReadings(candidates, signal);
         } catch (error) {
           if (error?.name === "AbortError") {
             throw error;
           }
+        } finally {
+          progressListeners.delete(notify);
         }
       }
       return prepared.map(({ text, entries }) => renderSegments(text, entries, readings));
@@ -5797,7 +5853,21 @@
     async function resolveReadings(candidates, signal) {
       const missing = candidates.filter((word) => !readingCache.has(word) && !pendingReadings.has(word));
       if (missing.length > 0) {
-        const operation = Promise.resolve().then(() => romanizeWords(missing, { signal }));
+        const requested = new Set(missing);
+        const operation = Promise.resolve().then(() => romanizeWords(missing, {
+          signal,
+          onBatch: ({ words, readings: readings2 }) => {
+            if (signal?.aborted || !Array.isArray(words) || !(readings2 instanceof Map)) return;
+            const changed = /* @__PURE__ */ new Set();
+            for (const word of words) {
+              if (!requested.has(word) || readingCache.has(word)) continue;
+              const reading = readings2.get(word);
+              readingCache.set(word, typeof reading === "string" && reading.length > 0 ? reading : null);
+              changed.add(word);
+            }
+            for (const listener of [...progressListeners]) listener(changed);
+          }
+        }));
         for (const word of missing) {
           let pending;
           pending = operation.then(
@@ -5809,8 +5879,9 @@
               return null;
             }
           ).then((reading) => {
-            readingCache.set(word, reading);
-            return reading;
+            if (signal?.aborted) throw new DOMException("Kanji analysis aborted.", "AbortError");
+            if (!readingCache.has(word)) readingCache.set(word, reading);
+            return readingCache.get(word);
           }).finally(() => {
             if (pendingReadings.get(word) === pending) {
               pendingReadings.delete(word);
@@ -5911,6 +5982,8 @@
       this.abortController = null;
       this.cache = /* @__PURE__ */ new Map();
       this.recordWaiters = new RecordWaiters();
+      this.recordEntries = /* @__PURE__ */ new WeakMap();
+      this.unusedEntries = /* @__PURE__ */ new Map();
       this.queue = [];
       this.processing = false;
       this.flushScheduled = false;
@@ -5972,10 +6045,16 @@
       }
       let entry = this.cache.get(text);
       if (!entry) {
-        entry = { status: "pending", ranges: [], waiters: /* @__PURE__ */ new Set() };
+        entry = { text, status: "pending", ranges: [], waiters: /* @__PURE__ */ new Set(), owners: 0 };
         this.cache.set(text, entry);
         this.queue.push(text);
       }
+      if (this.recordEntries.get(record) !== entry) {
+        this.forget(record);
+        this.recordEntries.set(record, entry);
+        entry.owners += 1;
+      }
+      this.unusedEntries.delete(text);
       if (entry.status === "pending") {
         this.recordWaiters.add(record, entry);
       }
@@ -5984,6 +6063,12 @@
     }
     forget(record) {
       this.recordWaiters.forget(record);
+      const entry = this.recordEntries.get(record);
+      if (entry) {
+        this.recordEntries.delete(record);
+        entry.owners -= 1;
+        this.#releaseUnused(entry);
+      }
     }
     stop() {
       this.disable();
@@ -6058,7 +6143,20 @@
         this.processing = true;
         let result;
         try {
-          result = analyzer.analyzeBatch(texts, { signal });
+          result = analyzer.analyzeBatch(texts, {
+            signal,
+            onProgress: (results) => {
+              if (generation !== this.generation || !this.active || signal.aborted) return;
+              for (let index = 0; index < texts.length; index++) {
+                const entry = entries[index];
+                if (this.cache.get(texts[index]) !== entry) continue;
+                const ranges = annotationRanges(texts[index], results?.[index]);
+                if (JSON.stringify(ranges) === JSON.stringify(entry.ranges)) continue;
+                entry.ranges = ranges;
+                for (const record of [...entry.waiters]) this.onPlanChanged(record);
+              }
+            }
+          });
         } catch {
           this.#finishBatch(texts, entries, generation, []);
           return;
@@ -6077,7 +6175,7 @@
         const text = texts[index];
         const entry = entries[index];
         if (this.cache.get(text) === entry) {
-          this.#publish(entry, annotationRanges(text, results?.[index]));
+          this.#publish(entry, results?.[index] ? annotationRanges(text, results[index]) : entry.ranges);
         }
       }
       this.processing = false;
@@ -6093,10 +6191,22 @@
       for (const record of waiters) {
         this.onPlanChanged(record);
       }
+      this.#releaseUnused(entry);
+    }
+    #releaseUnused(entry) {
+      if (entry.owners > 0 || entry.status === "pending" || this.cache.get(entry.text) !== entry) return;
+      this.unusedEntries.set(entry.text, entry);
+      while (this.unusedEntries.size > 128) {
+        const text = this.unusedEntries.keys().next().value;
+        this.unusedEntries.delete(text);
+        this.cache.delete(text);
+      }
     }
     #clearCycle() {
       this.cache.clear();
       this.recordWaiters.clear();
+      this.recordEntries = /* @__PURE__ */ new WeakMap();
+      this.unusedEntries.clear();
       this.queue.length = 0;
       this.processing = false;
       this.flushScheduled = false;

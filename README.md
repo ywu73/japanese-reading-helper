@@ -7,9 +7,10 @@ It adds romaji above words containing kanji through a selected Local, Google,
 or Bing mode and can add best-effort English ruby above matched katakana
 phrases through a separately selected online provider.
 
-**Version 0.6.2 introduces the new Chinese and English product names. Full
-desktop Chrome + Tampermonkey installation, extension-background network capture,
-automatic update, and real-site compatibility remain unverified.**
+**Version 0.6.3 fixes incremental kanji results and annotation of revealed content,
+and improves full-text cache cleanup and foreground recovery scheduling.** See
+the [0.6.3 verification report](docs/verification-report-0.6.3-2026-09-12.md) for
+validation and installation evidence.
 
 Previously named **YomiRuby**. Existing setting keys, the userscript namespace,
 and the install filename retain `yomi-ruby`. See the [rename and upgrade notes](docs/rename-0.6.2.md).
@@ -23,7 +24,7 @@ and the install filename retain `yomi-ruby`. See the [rename and upgrade notes](
   installations without that setting migrate to Local so an update cannot
   silently disclose kanji.
 - Local runs pinned `kuromoji@0.1.2` in the page and uses modified Hepburn with
-  macrons. The transitional 0.6.2 build still preloads all twelve dictionaries.
+  macrons. The 0.6.3 build still preloads all twelve dictionaries.
 - Google/Bing use local `Intl.Segmenter` word boundaries and send only complete,
   deduplicated words containing kanji. Google uses bounded `🧩`-joined batches
   with strict positional gates and an exact single-word fallback; Bing uses
@@ -35,6 +36,8 @@ and the install filename retain `yomi-ruby`. See the [rename and upgrade notes](
   back to another provider or Local after failure.
 - Online results are displayed as returned and are experimental best-effort
   readings, not verified modified Hepburn.
+- Google/Bing kanji readings appear after each validated batch. Later request
+  failures preserve readings from successful earlier batches.
 
 ### Optional Online Katakana English
 
@@ -165,6 +168,8 @@ See [Security and privacy boundary](docs/security-boundary.md), [Network audit](
   never scrolled into view. Without viewport observation, ordinary ordered
   scanning is used. Hidden tabs start no new work; becoming visible triggers a
   rescan of the currently connected DOM.
+- Visibility, editing-state, style and details changes trigger scoped rescans; newly unsafe content restores its source. Author ruby rollback retains original child nodes and their listeners.
+- Foreground recovery reprocesses records in bounded slices. At most 128 completed, unreferenced full-text entries are retained; live records and per-cycle exact-word deduplication remain available.
 - Queued work and observers stop on disable; stale or aborted asynchronous
   results cannot re-annotate the page.
 

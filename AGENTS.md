@@ -3,16 +3,21 @@
 ## 1. Project Scope
 
 Japanese Reading Helper is a privacy-bounded Tampermonkey reading aid. Its implemented modules
-display local Hepburn romaji above Japanese words containing kanji and, after
-the feature is enabled for the exact origin, online English ruby above matched
-katakana phrases.
+display selected local or online romaji above Japanese words containing kanji
+and online English ruby above matched katakana phrases. Both features require
+enabling for the exact origin.
 
 The project inherits the global collaboration rules from
 `/Users/wuyi/.codex/AGENTS.md`. This file adds only project-specific rules.
 
 ## 2. Product Boundaries
 
-- Analyze kanji readings and Hepburn romaji locally in the browser.
+- In Local mode, analyze kanji readings and Hepburn romaji locally in the browser.
+  In the existing Google/Bing modes, segment locally and send only complete,
+  deduplicated words containing kanji to the selected provider's approved routes
+  below. Accept only source-aligned romanization fields, never translated English
+  as readings. Do not send sentences or surrounding context, and do not fall back
+  to another provider or Local mode. Online readings retain provider spelling.
 - The katakana module may send only matched, deduplicated katakana phrases to
   the selected provider while the feature is enabled for the exact current
   origin. Google is limited to
@@ -44,6 +49,7 @@ The project inherits the global collaboration rules from
 - Keep readings, translations, matches, failures, pending work, temporary Bing
   configuration, and request state in page memory only. Persistent storage is
   limited to the global `yomi-ruby:locale` enum, the global
+  `yomi-ruby:kanji-romaji-mode = "google" | "bing" | "local"` enum, the global
   `yomi-ruby:translation-provider = "bing" | "google"` enum, and exact-origin
   boolean feature settings.
 
@@ -78,7 +84,8 @@ Before a userscript build is considered deliverable, verify at minimum:
 
 - dependency versions, licenses, URLs, and SHA-256 digests;
 - lazy loading in the supported Tampermonkey environment;
-- absence of page text in outbound requests;
+- no page text in asset/default-off requests; online requests contain only the
+  selected feature's approved exact words or phrases, without surrounding text;
 - strict Bing redirect/config parsing, anonymous requests, bounded 401 refresh,
   CAPTCHA/rate-limit failure, and no cross-provider fallback;
 - ordinary kanji, kanji-kana mixed words, macrons, and unknown readings;

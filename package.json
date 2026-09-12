@@ -1,6 +1,6 @@
 {
   "name": "japanese-reading-helper",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "private": true,
   "license": "MIT",
   "description": "Japanese Reading Helper, a privacy-bounded Tampermonkey reading aid for selectable local or online kanji romaji and optional online katakana translation.",
