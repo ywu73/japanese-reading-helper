@@ -36,7 +36,7 @@ export function createBingKanjiRomajiClient({
   let requestSequence = 0;
   let lastBatchStartedAt = null;
 
-  const romanizeWords = (words, { signal } = {}) => {
+  const romanizeWords = (words, { signal, onBatch } = {}) => {
     const operation = operationQueue.then(async () => {
       throwIfAborted(signal);
       const uniqueWords = [...new Set(words.filter((word) => isEligibleWord(
@@ -53,6 +53,8 @@ export function createBingKanjiRomajiClient({
         for (const [word, romaji] of romanizedBatch) {
           readings.set(word, romaji);
         }
+        throwIfAborted(signal);
+        onBatch?.({ words: batch, readings: romanizedBatch });
       }
       return readings;
     });

@@ -57,3 +57,29 @@ test("skips YomiRuby status UI", () => {
 
   assert.equal(shouldSkipTextNode(statusText), true);
 });
+
+test("author ruby restoration preserves original child nodes and their listeners", () => {
+  const dom = new JSDOM('<ruby>東京<rt title="original"><span>とうきょう</span></rt></ruby>');
+  const { document } = dom.window;
+  const original = document.body.innerHTML;
+  const span = document.querySelector("rt span");
+  let clicks = 0;
+  span.addEventListener("click", () => clicks++);
+  assert.equal(convertExistingKanaRuby(document), 1);
+  restoreConvertedKanaRuby(document);
+  assert.equal(document.body.innerHTML, original);
+  assert.equal(document.querySelector("rt span"), span);
+  span.click(); assert.equal(clicks, 1);
+  dom.window.close();
+});
+
+test("author ruby in hidden and editable containers is not converted", () => {
+  const dom = new JSDOM('<main><ruby hidden>東京<rt>とうきょう</rt></ruby><div contenteditable="true"><ruby>東京<rt>とうきょう</rt></ruby></div><ruby id="safe">東京<rt>とうきょう</rt></ruby></main>');
+  const { document } = dom.window;
+  assert.equal(convertExistingKanaRuby(document), 1);
+  assert.equal(document.querySelector("ruby[hidden] rt").textContent, "とうきょう");
+  document.querySelector("#safe").hidden = true;
+  assert.equal(convertExistingKanaRuby(document), 0);
+  assert.equal(document.querySelector("#safe rt").textContent, "とうきょう");
+  dom.window.close();
+});

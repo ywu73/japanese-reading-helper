@@ -16,6 +16,8 @@ export class KanjiRuntime {
     this.abortController = null;
     this.cache = new Map();
     this.recordWaiters = new RecordWaiters();
+    this.recordEntries = new WeakMap();
+    this.unusedEntries = new Map();
     this.queue = [];
     this.processing = false;
     this.flushScheduled = false;
@@ -83,10 +85,16 @@ export class KanjiRuntime {
     }
     let entry = this.cache.get(text);
     if (!entry) {
-      entry = { status: "pending", ranges: [], waiters: new Set() };
+      entry = { text, status: "pending", ranges: [], waiters: new Set(), owners: 0 };
       this.cache.set(text, entry);
       this.queue.push(text);
     }
+    if (this.recordEntries.get(record) !== entry) {
+      this.forget(record);
+      this.recordEntries.set(record, entry);
+      entry.owners += 1;
+    }
+    this.unusedEntries.delete(text);
     if (entry.status === "pending") {
       this.recordWaiters.add(record, entry);
     }
@@ -96,6 +104,12 @@ export class KanjiRuntime {
 
   forget(record) {
     this.recordWaiters.forget(record);
+    const entry = this.recordEntries.get(record);
+    if (entry) {
+      this.recordEntries.delete(record);
+      entry.owners -= 1;
+      this.#releaseUnused(entry);
+    }
   }
 
   stop() {
@@ -182,7 +196,19 @@ export class KanjiRuntime {
       this.processing = true;
       let result;
       try {
-        result = analyzer.analyzeBatch(texts, { signal });
+        result = analyzer.analyzeBatch(texts, { signal,
+          onProgress: (results) => {
+            if (generation !== this.generation || !this.active || signal.aborted) return;
+            for (let index = 0; index < texts.length; index++) {
+              const entry = entries[index];
+              if (this.cache.get(texts[index]) !== entry) continue;
+              const ranges = annotationRanges(texts[index], results?.[index]);
+              if (JSON.stringify(ranges) === JSON.stringify(entry.ranges)) continue;
+              entry.ranges = ranges;
+              for (const record of [...entry.waiters]) this.onPlanChanged(record);
+            }
+          },
+        });
       } catch {
         this.#finishBatch(texts, entries, generation, []);
         return;
@@ -202,7 +228,7 @@ export class KanjiRuntime {
       const text = texts[index];
       const entry = entries[index];
       if (this.cache.get(text) === entry) {
-        this.#publish(entry, annotationRanges(text, results?.[index]));
+        this.#publish(entry, results?.[index] ? annotationRanges(text, results[index]) : entry.ranges);
       }
     }
     this.processing = false;
@@ -219,11 +245,26 @@ export class KanjiRuntime {
     for (const record of waiters) {
       this.onPlanChanged(record);
     }
+    this.#releaseUnused(entry);
+  }
+
+  #releaseUnused(entry) {
+    if (entry.owners > 0 || entry.status === "pending" || this.cache.get(entry.text) !== entry) return;
+    // Keep a small recent-text window for virtualized DOM reinsertion. The
+    // analyzer's exact-word cache continues to prevent repeated online requests.
+    this.unusedEntries.set(entry.text, entry);
+    while (this.unusedEntries.size > 128) {
+      const text = this.unusedEntries.keys().next().value;
+      this.unusedEntries.delete(text);
+      this.cache.delete(text);
+    }
   }
 
   #clearCycle() {
     this.cache.clear();
     this.recordWaiters.clear();
+    this.recordEntries = new WeakMap();
+    this.unusedEntries.clear();
     this.queue.length = 0;
     this.processing = false;
     this.flushScheduled = false;

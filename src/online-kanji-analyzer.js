@@ -13,24 +13,33 @@ export function createOnlineKanjiAnalyzer({
   const segmenter = new Segmenter("ja", { granularity: "word" });
   const readingCache = new Map();
   const pendingReadings = new Map();
+  const progressListeners = new Set();
 
   const analyze = async (text, options) => (await analyzeBatch([text], options))[0];
   analyze.analyzeBatch = analyzeBatch;
   return analyze;
 
-  async function analyzeBatch(texts, { signal } = {}) {
+  async function analyzeBatch(texts, { signal, onProgress } = {}) {
     // Segment each node independently: joining source text could change word
     // boundaries. Only the resulting exact words are shared across nodes.
     const prepared = texts.map(prepareText);
     const candidates = [...new Set(prepared.flatMap(({ candidates }) => candidates))];
+    const notify = (changed) => {
+      if (!signal?.aborted && onProgress && candidates.some((word) => changed.has(word))) {
+        onProgress(prepared.map(({ text, entries }) => renderSegments(text, entries, readingCache)));
+      }
+    };
     let readings = new Map();
     if (candidates.length > 0) {
+      progressListeners.add(notify);
       try {
         readings = await resolveReadings(candidates, signal);
       } catch (error) {
         if (error?.name === "AbortError") {
           throw error;
         }
+      } finally {
+        progressListeners.delete(notify);
       }
     }
     return prepared.map(({ text, entries }) => renderSegments(text, entries, readings));
@@ -76,7 +85,21 @@ export function createOnlineKanjiAnalyzer({
       !readingCache.has(word) && !pendingReadings.has(word)
     ));
     if (missing.length > 0) {
-      const operation = Promise.resolve().then(() => romanizeWords(missing, { signal }));
+      const requested = new Set(missing);
+      const operation = Promise.resolve().then(() => romanizeWords(missing, {
+        signal,
+        onBatch: ({ words, readings }) => {
+          if (signal?.aborted || !Array.isArray(words) || !(readings instanceof Map)) return;
+          const changed = new Set();
+          for (const word of words) {
+            if (!requested.has(word) || readingCache.has(word)) continue;
+            const reading = readings.get(word);
+            readingCache.set(word, typeof reading === "string" && reading.length > 0 ? reading : null);
+            changed.add(word);
+          }
+          for (const listener of [...progressListeners]) listener(changed);
+        },
+      }));
       for (const word of missing) {
         let pending;
         pending = operation.then(
@@ -90,8 +113,10 @@ export function createOnlineKanjiAnalyzer({
             return null;
           },
         ).then((reading) => {
-          readingCache.set(word, reading);
-          return reading;
+          if (signal?.aborted) throw new DOMException("Kanji analysis aborted.", "AbortError");
+          // Validated earlier batches survive a later transport failure.
+          if (!readingCache.has(word)) readingCache.set(word, reading);
+          return readingCache.get(word);
         }).finally(() => {
           if (pendingReadings.get(word) === pending) {
             pendingReadings.delete(word);

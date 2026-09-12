@@ -24,7 +24,7 @@ export function createGoogleKanjiRomajiClient({
   }
 
   let operationQueue = Promise.resolve();
-  const romanizeWords = (words, { signal } = {}) => {
+  const romanizeWords = (words, { signal, onBatch } = {}) => {
     const operation = operationQueue.then(async () => {
       throwIfAborted(signal);
       const uniqueWords = [...new Set(words.filter((word) => isEligibleWord(
@@ -76,6 +76,8 @@ export function createGoogleKanjiRomajiClient({
             for (const [word, romaji] of batchReadings) {
               readings.set(word, romaji);
             }
+            throwIfAborted(signal);
+            onBatch?.({ words: batch.words, readings: batchReadings });
           } else {
             for (const word of batch.words) {
               const responseText = await fetchUrl(buildSingleWordUrl(word));
@@ -83,6 +85,8 @@ export function createGoogleKanjiRomajiClient({
               if (romaji) {
                 readings.set(word, romaji);
               }
+              throwIfAborted(signal);
+              onBatch?.({ words: [word], readings: new Map(romaji ? [[word, romaji]] : []) });
             }
           }
         }

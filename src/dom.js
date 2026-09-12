@@ -20,16 +20,26 @@ export function shouldSkipTextNode(node, checkedElements) {
   if (!node || node.nodeType !== 3 || !node.parentElement || !node.textContent.trim()) {
     return true;
   }
+  return shouldSkipTextContainer(node.parentElement, checkedElements);
+}
 
+export function shouldSkipTextContainer(container, checkedElements, allowRuby = false) {
   const visited = [];
   let skip = false;
-  for (let element = node.parentElement; element; element = element.parentElement) {
+  for (let element = container; element; element = element.parentElement) {
+    // A closed details element exposes only its first summary. This depends on
+    // the original descendant, so do not cache the result on DETAILS itself.
+    if (element.tagName === "DETAILS" && !element.open
+      && !element.querySelector(":scope > summary")?.contains(container)) {
+      skip = true;
+      break;
+    }
     if (checkedElements?.has(element)) {
       skip = checkedElements.get(element);
       break;
     }
     visited.push(element);
-    if (isBlockedTextContainer(element)) {
+    if (isBlockedTextContainer(element) && !(allowRuby && element.tagName === "RUBY")) {
       skip = true;
       break;
     }
@@ -75,6 +85,10 @@ export function convertExistingKanaRuby(root, { descendants = true } = {}) {
     if (isKatakanaTerminatorRuby(ruby)) {
       continue;
     }
+    if (shouldSkipTextContainer(ruby, undefined, true)) {
+      restoreConvertedKanaRuby(ruby);
+      continue;
+    }
     const rtElements = [...ruby.querySelectorAll(":scope > rt")];
     const baseText = [...ruby.childNodes]
       .filter((node) => !(node.nodeType === 1 && ["RT", "RP"].includes(node.tagName)))
@@ -93,7 +107,7 @@ export function convertExistingKanaRuby(root, { descendants = true } = {}) {
         continue;
       }
       convertedRubySnapshots.set(rt, {
-        text: rt.textContent,
+        children: [...rt.childNodes],
         attributes: [...rt.attributes].map(({ name, value }) => [name, value]),
       });
       rt.textContent = romaji;
@@ -112,7 +126,7 @@ export function restoreConvertedKanaRuby(root) {
     if (!snapshot) {
       continue;
     }
-    rt.textContent = snapshot.text;
+    rt.replaceChildren(...snapshot.children);
     for (const attribute of [...rt.attributes]) {
       rt.removeAttribute(attribute.name);
     }

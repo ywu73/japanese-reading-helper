@@ -2,6 +2,7 @@ import {
   convertExistingKanaRuby,
   isBlockedTextContainer,
   restoreConvertedKanaRuby,
+  shouldSkipTextContainer,
   shouldSkipTextNode,
 } from "./dom.js";
 import { findKatakanaMatches } from "./katakana.js";
@@ -40,6 +41,9 @@ export class AnnotationCoordinator {
     this.records = new Set();
     this.nodeRecords = new WeakMap();
     this.pendingRoots = new Set();
+    this.revalidationRequested = false;
+    this.reprocessIterator = null;
+    this.reprocessSeen = new WeakSet();
     this.scanJobs = [];
     this.scanStyleCache = null;
     this.flushTimer = null;
@@ -125,6 +129,8 @@ export class AnnotationCoordinator {
       this.mutationObserver.observe(this.document.body ?? this.document.documentElement, {
         childList: true,
         characterData: true,
+        attributes: true,
+        attributeFilter: ["hidden", "inert", "aria-hidden", "style", "class", "contenteditable", "open"],
         subtree: true,
       });
     }
@@ -147,6 +153,8 @@ export class AnnotationCoordinator {
     this.viewport = null;
     this.#cancelScheduledWork();
     this.pendingRoots.clear();
+    this.revalidationRequested = false;
+    this.reprocessIterator = null;
     this.scanJobs.length = 0;
     for (const record of this.records) {
       this.#restoreRecord(record);
@@ -169,8 +177,7 @@ export class AnnotationCoordinator {
     }
     this.kanjiRuntime?.resume();
     this.katakanaRuntime?.resume();
-    this.#discardDetachedRecords();
-    this.#reprocessAll();
+    this.#reprocessAll({ deferred: true });
     this.#queueRoot(this.document.body ?? this.document.documentElement, { immediate: true });
   }
 
@@ -179,6 +186,12 @@ export class AnnotationCoordinator {
       return;
     }
     for (const mutation of mutations) {
+      if (mutation.type === "attributes") {
+        if (mutation.target.closest?.("[data-yomi-ruby-generated], [data-yomi-ruby-converted-rt], [data-yomi-ruby-status]")) continue;
+        this.pendingRoots.add(mutation.target);
+        this.revalidationRequested = true;
+        continue;
+      }
       if (mutation.type === "characterData") {
         const record = this.nodeRecords.get(mutation.target);
         if (record && this.#recordIsCurrent(record)) {
@@ -247,6 +260,8 @@ export class AnnotationCoordinator {
     }
     const roots = this.pendingRoots;
     this.pendingRoots = new Set();
+    const revalidate = this.revalidationRequested;
+    this.revalidationRequested = false;
     for (const root of roots) {
       if (!root.isConnected) {
         continue;
@@ -259,13 +274,13 @@ export class AnnotationCoordinator {
         }
       }
       if (!covered) {
-        this.#collectTextNodes(root);
+        this.#collectTextNodes(root, revalidate);
       }
     }
     this.#scheduleNodeDrain();
   }
 
-  #collectTextNodes(root) {
+  #collectTextNodes(root, revalidate = false) {
     if (!root?.isConnected || hasBlockedTextAncestor(root)) {
       return;
     }
@@ -276,7 +291,7 @@ export class AnnotationCoordinator {
       root,
       this.document.defaultView.NodeFilter.SHOW_ELEMENT | this.document.defaultView.NodeFilter.SHOW_TEXT,
     );
-    this.scanJobs.push({ root, walker, next: root });
+    this.scanJobs.push({ root, walker, next: root, revalidate, revalidated: new WeakSet() });
   }
 
   #processTextNode(node) {
@@ -354,6 +369,16 @@ export class AnnotationCoordinator {
         processed += 1;
         continue;
       }
+      if (this.reprocessIterator) {
+        const next = this.reprocessIterator.next();
+        if (next.done) {
+          this.reprocessIterator = null;
+        } else if (!this.reprocessSeen.has(next.value) && !this.viewport?.has(next.value)) {
+          this.#processRecord(next.value);
+        }
+        processed += 1;
+        continue;
+      }
       if (this.scanJobs.length === 0) {
         const record = this.viewport?.takeBackground();
         if (record) {
@@ -394,7 +419,12 @@ export class AnnotationCoordinator {
       job.next = isPrunedTextContainer(node)
         ? nextOutsideSubtree(job.walker, job.root)
         : job.walker.nextNode();
-      if (node.nodeType === 3) {
+      const owned = job.revalidate && this.nodeRecords.get(node);
+      if (owned && !job.revalidated.has(owned)) {
+        job.revalidated.add(owned);
+        if (!this.viewport?.has(owned)) this.#processRecord(owned);
+        else this.#processTextNode(node);
+      } else if (node.nodeType === 3) {
         this.#processTextNode(node);
       } else if (this.kanjiRuntime && node.nodeName === "RUBY") {
         if (convertExistingKanaRuby(node, { descendants: false })) {
@@ -408,7 +438,7 @@ export class AnnotationCoordinator {
   }
 
   #hasRunnableWork(continuingBackgroundBatch = false) {
-    return this.scanJobs.length > 0 || this.viewport?.hasReady || (
+    return this.reprocessIterator || this.scanJobs.length > 0 || this.viewport?.hasReady || (
       this.viewport?.hasDeferred && (continuingBackgroundBatch || (
         !this.kanjiRuntime?.hasPendingWork?.() && !this.katakanaRuntime?.hasPendingWork?.()
       ))
@@ -424,7 +454,8 @@ export class AnnotationCoordinator {
   }
 
   #processRecord(record) {
-    if (!this.#recordIsCurrent(record)) {
+    if (this.reprocessIterator) this.reprocessSeen.add(record);
+    if (!this.#recordIsCurrent(record) || shouldSkipTextContainer(record.currentNodes[0]?.parentElement, this.scanStyleCache)) {
       this.#discardRecord(record);
       return;
     }
@@ -445,8 +476,15 @@ export class AnnotationCoordinator {
     this.#renderRecord(record, annotations);
   }
 
-  #reprocessAll() {
+  #reprocessAll({ deferred = false } = {}) {
     if (this.hidden) {
+      return;
+    }
+    this.reprocessIterator = null;
+    if (deferred) {
+      this.reprocessSeen = new WeakSet();
+      this.reprocessIterator = this.records.values();
+      this.#scheduleNodeDrain();
       return;
     }
     for (const record of [...this.records]) {
@@ -582,14 +620,6 @@ export class AnnotationCoordinator {
     }
     for (const record of found) {
       if (record.currentNodes.some((node) => !node.isConnected)) {
-        this.#discardRecord(record);
-      }
-    }
-  }
-
-  #discardDetachedRecords() {
-    for (const record of [...this.records]) {
-      if (!this.#recordIsCurrent(record)) {
         this.#discardRecord(record);
       }
     }
