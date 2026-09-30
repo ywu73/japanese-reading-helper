@@ -68,7 +68,10 @@ The public installation entry is [Greasy Fork script 589223](https://greasyfork.
 <https://raw.githubusercontent.com/ywu73/japanese-reading-helper/main/dist/yomi-ruby.user.js>
 
 The current compatibility target is **desktop Google Chrome with Tampermonkey**.
-The full browser verification listed above is still incomplete.
+The [0.6.3 verification report](docs/verification-report-0.6.3-2026-09-12.md)
+records Chrome/Tampermonkey fixture tests, a direct update from 0.6.2, and
+extension-background network capture. Broad real-site testing and the timed
+automatic-update cycle remain unverified.
 Other browsers and userscript managers are unverified and receive no
 compatibility promise.
 
@@ -219,4 +222,4 @@ sensitive details in a public Issue. See [CONTRIBUTING.md](CONTRIBUTING.md) and
 Japanese Reading Helper-owned code and contributions are licensed under the [MIT License](LICENSE).
 Third-party license and provenance material is recorded in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). No CLA or DCO is required for
-version 0.6.2.
+version 0.6.3.

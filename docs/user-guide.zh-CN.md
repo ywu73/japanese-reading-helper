@@ -1,6 +1,6 @@
 # 日语阅读助手安装与使用指南
 
-项目原名 **YomiRuby**，现名 **日语阅读助手 / Japanese Reading Helper**。本指南的固定安装链接和截图仍对应旧版，安装页与菜单可能显示 YomiRuby；0.6.2 使用上述新名称。
+项目原名 **YomiRuby**，现名 **日语阅读助手 / Japanese Reading Helper**。本指南的固定安装链接对应 **0.6.3**；部分截图来自旧版，仍显示 YomiRuby，实际安装页使用新名称。
 
 这份指南写给第一次使用浏览器用户脚本的人。跟着下面的步骤操作，即可在日语网页的汉字上方显示罗马音，并按需在片假名词组上方显示英文。
 
@@ -11,7 +11,7 @@
 如果你只想先把汉字罗马音用起来，完成下面四步即可：
 
 1. 在桌面版 Chrome 中安装 Tampermonkey：[Chrome 应用商店中的 Tampermonkey 官方页面](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)；
-2. 打开 [日语阅读助手国内优先安装链接](https://cdn.jsdelivr.net/gh/ywu73/japanese-reading-helper@c4f5660bf7e632351b9e3a329e8dd13316584784/dist/yomi-ruby.user.js)，在 Tampermonkey 页面点击“安装”；
+2. 打开 [日语阅读助手 0.6.3 固定版本安装链接](https://cdn.jsdelivr.net/gh/ywu73/japanese-reading-helper@e4f4349bb26d68cd469eee9e1c6f3f12c31dbb6f/dist/yomi-ruby.user.js)，在 Tampermonkey 页面点击“安装”；
 3. 打开一个日语网页并刷新，点击浏览器右上角的 Tampermonkey 图标；
 4. 在日语阅读助手菜单中点击“开启本网站汉字罗马音”。
 
@@ -52,18 +52,18 @@
 
 先确认 Tampermonkey 已经安装并启用，然后在 Chrome 中直接打开下面的链接：
 
-<https://cdn.jsdelivr.net/gh/ywu73/japanese-reading-helper@c4f5660bf7e632351b9e3a329e8dd13316584784/dist/yomi-ruby.user.js>
+<https://cdn.jsdelivr.net/gh/ywu73/japanese-reading-helper@e4f4349bb26d68cd469eee9e1c6f3f12c31dbb6f/dist/yomi-ruby.user.js>
 
-这是固定在提交 `c4f5660bf7e632351b9e3a329e8dd13316584784` 的旧版 YomiRuby **0.6.0** 安装文件。固定提交可以避免分享链接指向的文件内容随 `main` 分支变化。
+这是固定在提交 `e4f4349bb26d68cd469eee9e1c6f3f12c31dbb6f` 的日语阅读助手 **0.6.3** 安装文件。固定提交可以避免分享链接指向的文件内容随 `main` 分支变化。该版本包含 DOM 安全与恢复修复、分批扫描和跨文本节点的在线汉字批处理。
 
 打开链接后：
 
 1. Tampermonkey 应自动显示用户脚本安装页面；
-2. 确认页面上的脚本名称是 **YomiRuby**，版本是 **0.6.0**；
+2. 确认页面上的脚本名称是 **日语阅读助手 — 汉字罗马音与片假名英译**（英文界面为 **Japanese Reading Helper — Kanji Romaji & Katakana English**），版本是 **0.6.3**；
 3. 点击“安装”；
 4. 安装完成后，打开 Tampermonkey 管理面板，确认日语阅读助手已存在并处于启用状态。
 
-> **截图待补：**Tampermonkey 的旧版 YomiRuby 0.6.0 安装确认页，建议同时展示脚本名称、版本号和“安装”按钮。
+安装和更新的测试记录见 [0.6.3 验证报告](verification-report-0.6.3-2026-09-12.md)。
 
 ### 方式 B：可以访问 Greasy Fork 时使用油猴脚本发布页
 
@@ -222,9 +222,9 @@
 
 ## 九、版本与更新说明
 
-本指南中的 jsDelivr 链接固定指向旧版 YomiRuby **0.6.0**，因此这个分享地址本身不会随着仓库后续提交改变。
+本指南中的 jsDelivr 链接固定指向日语阅读助手 **0.6.3**，因此这个分享地址本身不会随着仓库后续提交改变。
 
-该 0.6.0 文件内部的自动更新地址仍指向 GitHub Raw 的 `main` 构建文件。自动更新能否完成取决于 Tampermonkey 设置和网络是否能够访问该地址；更新失败不会自动删除已经安装的版本。希望先了解新版本内容时，可以查看 [Greasy Fork 发布页](https://greasyfork.org/zh-CN/scripts/589223) 或 [日语阅读助手 GitHub 仓库](https://github.com/ywu73/japanese-reading-helper)。
+该 0.6.3 文件内部的自动更新地址指向 GitHub Raw 的 `main` 构建文件，所以固定安装链接不会锁定后续自动更新版本。自动更新能否完成取决于 Tampermonkey 设置和网络是否能够访问该地址；更新失败不会自动删除已经安装的版本。希望先了解新版本内容时，可以查看 [Greasy Fork 发布页](https://greasyfork.org/zh-CN/scripts/589223) 或 [日语阅读助手 GitHub 仓库](https://github.com/ywu73/japanese-reading-helper)。
 
 ## 十、隐私提示
 

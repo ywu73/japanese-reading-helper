@@ -37,7 +37,7 @@
 
 <https://greasyfork.org/zh-CN/scripts/589223>
 
-GitHub Raw 构建产物仍保留在 <https://raw.githubusercontent.com/ywu73/japanese-reading-helper/main/dist/yomi-ruby.user.js>，但 Greasy Fork 是公开用户的主要安装入口。当前兼容目标只包括 **桌面 Google Chrome + Tampermonkey**；完整浏览器验证尚未完成，对其他浏览器和用户脚本管理器不提供兼容承诺。
+GitHub Raw 构建产物仍保留在 <https://raw.githubusercontent.com/ywu73/japanese-reading-helper/main/dist/yomi-ruby.user.js>，但 Greasy Fork 是公开用户的主要安装入口。当前兼容目标只包括 **桌面 Google Chrome + Tampermonkey**。[0.6.3 验证报告](docs/verification-report-0.6.3-2026-09-12.md)记录了固定测试页、从 0.6.2 直接更新及扩展后台网络抓取的结果；广泛真实网站测试和定时自动更新周期仍未验证，其他浏览器和用户脚本管理器也尚未验证。
 
 第一次使用浏览器用户脚本，或需要通过 jsDelivr 固定版本链接安装时，请参阅[中文安装与使用指南](docs/user-guide.zh-CN.md)。指南包含 Tampermonkey 安装、日语阅读助手安装、逐网站开启、模式选择、关闭卸载、图文操作、常见问题和常见浏览器的官方 Tampermonkey 入口。
 
