@@ -1,6 +1,6 @@
 # 日语阅读助手安装与使用指南
 
-项目原名 **YomiRuby**，现名 **日语阅读助手 / Japanese Reading Helper**。本指南的固定安装链接对应 **0.6.3**；部分截图来自旧版，仍显示 YomiRuby，实际安装页使用新名称。
+项目原名 **YomiRuby**，现名 **日语阅读助手 / Japanese Reading Helper**。本指南的固定安装链接对应 **0.6.4**；部分截图来自旧版，仍显示 YomiRuby，实际安装页使用新名称。
 
 这份指南写给第一次使用浏览器用户脚本的人。跟着下面的步骤操作，即可在日语网页的汉字上方显示罗马音，并按需在片假名词组上方显示英文。
 
@@ -11,7 +11,7 @@
 如果你只想先把汉字罗马音用起来，完成下面四步即可：
 
 1. 在桌面版 Chrome 中安装 Tampermonkey：[Chrome 应用商店中的 Tampermonkey 官方页面](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)；
-2. 打开 [日语阅读助手 0.6.3 固定版本安装链接](https://cdn.jsdelivr.net/gh/ywu73/japanese-reading-helper@e4f4349bb26d68cd469eee9e1c6f3f12c31dbb6f/dist/yomi-ruby.user.js)，在 Tampermonkey 页面点击“安装”；
+2. 打开 [日语阅读助手 0.6.4 固定版本安装链接](https://cdn.jsdelivr.net/gh/ywu73/japanese-reading-helper@01acaa59d656cbd56c03a2f4e66134f9aa71137d/dist/yomi-ruby.user.js)，在 Tampermonkey 页面点击“安装”；
 3. 打开一个日语网页并刷新，点击浏览器右上角的 Tampermonkey 图标；
 4. 在日语阅读助手菜单中点击“开启本网站汉字罗马音”。
 
@@ -52,18 +52,18 @@
 
 先确认 Tampermonkey 已经安装并启用，然后在 Chrome 中直接打开下面的链接：
 
-<https://cdn.jsdelivr.net/gh/ywu73/japanese-reading-helper@e4f4349bb26d68cd469eee9e1c6f3f12c31dbb6f/dist/yomi-ruby.user.js>
+<https://cdn.jsdelivr.net/gh/ywu73/japanese-reading-helper@01acaa59d656cbd56c03a2f4e66134f9aa71137d/dist/yomi-ruby.user.js>
 
-这是固定在提交 `e4f4349bb26d68cd469eee9e1c6f3f12c31dbb6f` 的日语阅读助手 **0.6.3** 安装文件。固定提交可以避免分享链接指向的文件内容随 `main` 分支变化。该版本包含 DOM 安全与恢复修复、分批扫描和跨文本节点的在线汉字批处理。
+这是固定在提交 `01acaa59d656cbd56c03a2f4e66134f9aa71137d` 的日语阅读助手 **0.6.4** 安装文件。固定提交可以避免分享链接指向的文件内容随 `main` 分支变化。该版本包含 DOM 安全与恢复修复、分批扫描、跨文本节点的在线汉字批处理，以及 Google 跨次调用的请求间隔修复。
 
 打开链接后：
 
 1. Tampermonkey 应自动显示用户脚本安装页面；
-2. 确认页面上的脚本名称是 **日语阅读助手 — 汉字罗马音与片假名英译**（英文界面为 **Japanese Reading Helper — Kanji Romaji & Katakana English**），版本是 **0.6.3**；
+2. 确认页面上的脚本名称是 **日语阅读助手 — 汉字罗马音与片假名英译**（英文界面为 **Japanese Reading Helper — Kanji Romaji & Katakana English**），版本是 **0.6.4**；
 3. 点击“安装”；
 4. 安装完成后，打开 Tampermonkey 管理面板，确认日语阅读助手已存在并处于启用状态。
 
-安装和更新的测试记录见 [0.6.3 验证报告](verification-report-0.6.3-2026-09-12.md)。
+安装和更新的测试记录见 [0.6.4 验证报告](verification-report-0.6.4-2026-09-30.md)。
 
 ### 方式 B：可以访问 Greasy Fork 时使用油猴脚本发布页
 
@@ -71,7 +71,7 @@
 
 <https://greasyfork.org/zh-CN/scripts/589223>
 
-进入页面后点击“安装此脚本”，再在 Tampermonkey 的确认页点击“安装”。Greasy Fork 页面可以查看公开版本和更新信息；页面能否打开、安装和更新能否完成，仍取决于当时的网络环境。
+Greasy Fork 是独立发布入口，版本以其页面为准。本次 0.6.4 通过 GitHub 分发，安装此版本请使用上面的固定版本链接或 [GitHub Raw 安装链接](https://raw.githubusercontent.com/ywu73/japanese-reading-helper/main/dist/yomi-ruby.user.js)。
 
 > **网络说明：**jsDelivr 链接通常更便于国内用户获取日语阅读助手脚本文件，但它不代表整个安装和运行过程已经验证为“中国大陆网络必定可用”。日语阅读助手安装或更新时还需要获取固定版本的本地词典资源；使用联网模式时还会访问所选的 Bing 或 Google 服务。任何一处都可能受网络环境影响。
 
@@ -222,9 +222,9 @@
 
 ## 九、版本与更新说明
 
-本指南中的 jsDelivr 链接固定指向日语阅读助手 **0.6.3**，因此这个分享地址本身不会随着仓库后续提交改变。
+本指南中的 jsDelivr 链接固定指向日语阅读助手 **0.6.4**，因此这个分享地址本身不会随着仓库后续提交改变。
 
-该 0.6.3 文件内部的自动更新地址指向 GitHub Raw 的 `main` 构建文件，所以固定安装链接不会锁定后续自动更新版本。自动更新能否完成取决于 Tampermonkey 设置和网络是否能够访问该地址；更新失败不会自动删除已经安装的版本。希望先了解新版本内容时，可以查看 [Greasy Fork 发布页](https://greasyfork.org/zh-CN/scripts/589223) 或 [日语阅读助手 GitHub 仓库](https://github.com/ywu73/japanese-reading-helper)。
+该 0.6.4 文件内部的自动更新地址指向 GitHub Raw 的 `main` 构建文件，所以固定安装链接不会锁定后续自动更新版本。自动更新能否完成取决于 Tampermonkey 设置和网络是否能够访问该地址；更新失败不会自动删除已经安装的版本。希望先了解新版本内容时，可以查看 [Greasy Fork 发布页](https://greasyfork.org/zh-CN/scripts/589223) 或 [日语阅读助手 GitHub 仓库](https://github.com/ywu73/japanese-reading-helper)。
 
 ## 十、隐私提示
 

@@ -7,10 +7,10 @@ It adds romaji above words containing kanji through a selected Local, Google,
 or Bing mode and can add best-effort English ruby above matched katakana
 phrases through a separately selected online provider.
 
-**Version 0.6.3 fixes incremental kanji results and annotation of revealed content,
-and improves full-text cache cleanup and foreground recovery scheduling.** See
-the [0.6.3 verification report](docs/verification-report-0.6.3-2026-09-12.md) for
-validation and installation evidence.
+**Version 0.6.4 retains all DOM, scanning, batching, cache and dictionary
+optimizations from 0.6.3 and fixes Google's 250 ms request interval across
+separate runtime operations.** See the
+[0.6.4 verification report](docs/verification-report-0.6.4-2026-09-30.md).
 
 Previously named **YomiRuby**. Existing setting keys, the userscript namespace,
 and the install filename retain `yomi-ruby`. See the [rename and upgrade notes](docs/rename-0.6.2.md).
@@ -24,7 +24,7 @@ and the install filename retain `yomi-ruby`. See the [rename and upgrade notes](
   installations without that setting migrate to Local so an update cannot
   silently disclose kanji.
 - Local runs pinned `kuromoji@0.1.2` in the page and uses modified Hepburn with
-  macrons. The 0.6.3 build still preloads all twelve dictionaries.
+  macrons. The 0.6.4 build still preloads all twelve dictionaries.
 - Google/Bing use local `Intl.Segmenter` word boundaries and send only complete,
   deduplicated words containing kanji. Google uses bounded `🧩`-joined batches
   with strict positional gates and an exact single-word fallback; Bing uses
@@ -63,7 +63,9 @@ and the install filename retain `yomi-ruby`. See the [rename and upgrade notes](
 
 ## Installation status
 
-The public installation entry is [Greasy Fork script 589223](https://greasyfork.org/en/scripts/589223). The GitHub Raw build URL is:
+Install version **0.6.4** from the GitHub Raw build URL below. The separate
+[Greasy Fork listing](https://greasyfork.org/en/scripts/589223) shows its own
+published version; this release does not update that listing.
 
 <https://raw.githubusercontent.com/ywu73/japanese-reading-helper/main/dist/yomi-ruby.user.js>
 
@@ -222,4 +224,4 @@ sensitive details in a public Issue. See [CONTRIBUTING.md](CONTRIBUTING.md) and
 Japanese Reading Helper-owned code and contributions are licensed under the [MIT License](LICENSE).
 Third-party license and provenance material is recorded in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). No CLA or DCO is required for
-version 0.6.3.
+version 0.6.4.
