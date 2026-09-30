@@ -3,7 +3,7 @@
 // @name:zh-CN   日语阅读助手 — 汉字罗马音与片假名英译
 // @name:en      Japanese Reading Helper — Kanji Romaji & Katakana English
 // @namespace    yomi-ruby.local
-// @version      0.6.3
+// @version      0.6.4
 // @description  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:en  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:zh-CN  为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。
@@ -5317,6 +5317,7 @@
     if (typeof gmRequest !== "function") {
       throw new TypeError("A GM_xmlhttpRequest adapter is required for katakana translation.");
     }
+    let hasRequested = false;
     return {
       async translatePhrases(phrases, { signal, onBatch } = {}) {
         const uniquePhrases = [...new Set(phrases.filter((phrase) => typeof phrase === "string" && phrase))];
@@ -5328,11 +5329,14 @@
           maxPhrasesPerRequest,
           maxEncodedUrlLength
         });
-        for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
-          if (batchIndex > 0 && minimumIntervalMs > 0) {
+        for (const batch of batches) {
+          if (hasRequested && minimumIntervalMs > 0) {
             await sleep(minimumIntervalMs, { signal });
           }
-          const batch = batches[batchIndex];
+          if (signal?.aborted) {
+            throw abortError3();
+          }
+          hasRequested = true;
           const responseText = await requestTranslation(gmRequest, buildUrl(batch), {
             signal,
             timeout: requestTimeoutMs
@@ -5504,6 +5508,7 @@
       throw new TypeError("maxEncodedUrlLength must be a positive integer.");
     }
     let operationQueue = Promise.resolve();
+    let hasRequested = false;
     const romanizeWords = (words, { signal, onBatch } = {}) => {
       const operation = operationQueue.then(async () => {
         throwIfAborted3(signal);
@@ -5513,12 +5518,12 @@
         )))];
         const readings = /* @__PURE__ */ new Map();
         if (uniqueWords.length > 0) {
-          let requestIndex = 0;
           const fetchUrl = async (requestedUrl) => {
-            if (requestIndex > 0 && minimumIntervalMs > 0) {
+            if (hasRequested && minimumIntervalMs > 0) {
               await sleep(minimumIntervalMs, { signal });
             }
-            requestIndex += 1;
+            throwIfAborted3(signal);
+            hasRequested = true;
             const response = await request3(gmRequest, {
               method: "GET",
               url: requestedUrl.href,

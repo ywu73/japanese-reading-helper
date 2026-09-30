@@ -13,6 +13,7 @@ export function createGoogleTranslationClient({
     throw new TypeError("A GM_xmlhttpRequest adapter is required for katakana translation.");
   }
 
+  let hasRequested = false;
   return {
     async translatePhrases(phrases, { signal, onBatch } = {}) {
       const uniquePhrases = [...new Set(phrases.filter((phrase) => typeof phrase === "string" && phrase))];
@@ -24,11 +25,15 @@ export function createGoogleTranslationClient({
         maxPhrasesPerRequest,
         maxEncodedUrlLength,
       });
-      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
-        if (batchIndex > 0 && minimumIntervalMs > 0) {
+      for (const batch of batches) {
+        // Runtime calls are serialized; retain the interval between calls too.
+        if (hasRequested && minimumIntervalMs > 0) {
           await sleep(minimumIntervalMs, { signal });
         }
-        const batch = batches[batchIndex];
+        if (signal?.aborted) {
+          throw abortError();
+        }
+        hasRequested = true;
         const responseText = await requestTranslation(gmRequest, buildUrl(batch), {
           signal,
           timeout: requestTimeoutMs,

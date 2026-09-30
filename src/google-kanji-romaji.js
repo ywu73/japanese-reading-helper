@@ -24,6 +24,7 @@ export function createGoogleKanjiRomajiClient({
   }
 
   let operationQueue = Promise.resolve();
+  let hasRequested = false;
   const romanizeWords = (words, { signal, onBatch } = {}) => {
     const operation = operationQueue.then(async () => {
       throwIfAborted(signal);
@@ -33,12 +34,13 @@ export function createGoogleKanjiRomajiClient({
       )))];
       const readings = new Map();
       if (uniqueWords.length > 0) {
-        let requestIndex = 0;
         const fetchUrl = async (requestedUrl) => {
-          if (requestIndex > 0 && minimumIntervalMs > 0) {
+          // Keep pacing across later DOM/runtime operations on this client.
+          if (hasRequested && minimumIntervalMs > 0) {
             await sleep(minimumIntervalMs, { signal });
           }
-          requestIndex += 1;
+          throwIfAborted(signal);
+          hasRequested = true;
           const response = await request(gmRequest, {
             method: "GET",
             url: requestedUrl.href,
