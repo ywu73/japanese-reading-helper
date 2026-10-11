@@ -281,7 +281,7 @@ test("rapid katakana enable, disable, and enable converges on the final on state
 
   assert.equal(harness.stored.get("yomi-ruby:katakana-origin:https://x.com"), true);
   assert.equal(harness.starts.katakana, 1);
-  assert.equal(harness.stops.katakana, 0);
+  assert.equal(harness.stops.katakana, 1, "the intervening disable stops this page immediately");
   assert.ok(harness.menu.labels().includes("Disable Online Katakana English on this site"));
 });
 
@@ -429,6 +429,68 @@ test("rapid provider switches converge on the final persisted provider without s
   assert.equal(harness.stored.get("yomi-ruby:translation-provider"), "bing");
   assert.deepEqual(harness.providerSwitches, ["bing"]);
 });
+
+for (const [feature, label] of [
+  ["kanji", "Kanji Romaji"],
+  ["katakana", "Online Katakana English"],
+]) {
+  test(`${feature} stops immediately even when persisting disable fails`, async () => {
+    const gate = deferred();
+    const key = `yomi-ruby:${feature === "kanji" ? "auto" : "katakana"}-origin:https://x.com`;
+    const harness = createControlsHarness({
+      stored: new Map([[key, true]]),
+      setValue: async () => { await gate.promise; throw new Error("storage denied"); },
+    });
+    await harness.install();
+    const disabling = harness.menu.invoke(`Disable ${label} on this site`);
+    assert.equal(harness.stops[feature], 1, "stop before the storage operation settles");
+    gate.resolve();
+    await disabling;
+    assert.equal(harness.stops[feature], 1);
+    assert.equal(harness.stored.get(key), true, "reload still sees the old preference");
+    assert.ok(harness.menu.labels().includes(`Enable ${label} on this site`));
+    assert.match(harness.statuses.at(-1).message, /This page is disabled/u);
+  });
+}
+
+for (const setting of [
+  {
+    name: "provider", key: "yomi-ruby:translation-provider",
+    command: "Katakana Translator: Google (switch to Bing)", saved: "bing",
+    finalLabel: "Katakana Translator: Bing (switch to Google)",
+    changes: (harness) => harness.providerSwitches,
+  },
+  {
+    name: "kanji mode", key: "yomi-ruby:kanji-romaji-mode",
+    command: "Kanji Romaji: Google (switch to Local Dictionary)", saved: "local",
+    finalLabel: "Kanji Romaji: Local Dictionary (switch to Bing)",
+    changes: (harness) => harness.kanjiModeSwitches,
+  },
+  {
+    name: "locale", key: "yomi-ruby:locale",
+    command: "语言 / Language: 切换到简体中文", saved: "zh",
+    finalLabel: "语言 / Language: Switch to English",
+  },
+]) {
+  test(`rapid ${setting.name} changes recover the last successful write when the final write fails`, async () => {
+    let writes = 0;
+    const harness = createControlsHarness({
+      setValue: async (key, value) => {
+        if (++writes === 2) throw new Error("storage denied");
+        harness.stored.set(key, value);
+      },
+    });
+    await harness.install();
+    await Promise.all([
+      harness.menu.invoke(setting.command),
+      harness.menu.invoke(setting.command),
+    ]);
+    assert.equal(harness.stored.get(setting.key), setting.saved);
+    assert.ok(harness.menu.labels().includes(setting.finalLabel));
+    if (setting.changes) assert.deepEqual(setting.changes(harness), [setting.saved]);
+    assert.equal(harness.statuses.length, 1);
+  });
+}
 
 function createControlsHarness({
   stored = new Map(),

@@ -100,6 +100,11 @@ export async function installYomiRubyControls({
         } catch (error) {
           if (requestOperation === kanjiModeOperation) {
             desiredKanjiMode = persistedKanjiMode;
+            if (currentKanjiMode !== persistedKanjiMode) {
+              currentKanjiMode = persistedKanjiMode;
+              refreshMenus();
+              await kanji.setMode(currentKanjiMode);
+            }
             showStatus(localizer.t("error.kanjiRomajiModePersistence", {
               error: errorMessage(error),
             }), {
@@ -140,6 +145,11 @@ export async function installYomiRubyControls({
         } catch (error) {
           if (requestOperation === providerOperation) {
             desiredProvider = persistedProvider;
+            if (currentProvider !== persistedProvider) {
+              currentProvider = persistedProvider;
+              refreshMenus();
+              await katakana.setProvider(currentProvider);
+            }
             showStatus(localizer.t("error.translationProviderPersistence", {
               error: errorMessage(error),
             }), {
@@ -175,6 +185,8 @@ export async function installYomiRubyControls({
       } catch (error) {
         if (requestOperation === languageOperation) {
           desiredLocale = persistedLocale;
+          localizer.setLocale(persistedLocale);
+          refreshMenus();
           showStatus(localizer.t("error.localePersistence", { error: errorMessage(error) }), {
             duration: 9000,
             error: true,
@@ -344,6 +356,12 @@ function createFeatureControl({
       const requestedEnabled = !desiredEnabled;
       desiredEnabled = requestedEnabled;
       const requestOperation = ++operation;
+      // Stopping this page must not depend on extension storage being available.
+      if (!requestedEnabled) {
+        session.disable();
+        enabled = false;
+        refreshMenus();
+      }
       try {
         await persist(requestedEnabled);
       } catch (error) {
@@ -366,8 +384,6 @@ function createFeatureControl({
         refreshMenus();
         if (requestedEnabled) {
           await session.enable();
-        } else {
-          session.disable();
         }
       }
     });
