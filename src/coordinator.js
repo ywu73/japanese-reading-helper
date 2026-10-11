@@ -567,6 +567,7 @@ export class AnnotationCoordinator {
 
   #restoreRecord(record) {
     if (!this.#recordIsCurrent(record)) {
+      this.#unwrapOwnedRuby(record);
       return;
     }
     if (record.planKey === "[]") {
@@ -599,12 +600,25 @@ export class AnnotationCoordinator {
       for (const node of record.currentNodes) {
         node.remove();
       }
+    } else {
+      this.#unwrapOwnedRuby(record);
     }
     for (const node of record.currentNodes) {
       this.nodeRecords.delete(node);
     }
     record.valid = false;
     this.records.delete(record);
+  }
+
+  #unwrapOwnedRuby(record) {
+    // A page may edit or move only part of a record. Remove our annotation
+    // wrappers without replacing the page's current text, markup, or nodes.
+    for (const node of record.currentNodes) {
+      if (this.nodeRecords.get(node) !== record
+        || !node.matches?.("ruby[data-yomi-ruby-generated]")) continue;
+      const base = node.querySelector(":scope > .yomi-ruby-base");
+      if (base) node.replaceWith(...base.childNodes);
+    }
   }
 
   #discardDetachedOwnership(root) {

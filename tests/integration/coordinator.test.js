@@ -184,6 +184,50 @@ test("stopping a cooperative large-page scan cancels undispatched chunks", () =>
   assert.equal(seen.length, processed);
 });
 
+for (const beforeObserver of [false, true]) {
+  test(`stop preserves edited source and removes stale ruby ${beforeObserver ? "before" : "after"} mutation delivery`, async () => {
+    const dom = new JSDOM("<p>日本語です</p>");
+    const coordinator = immediateCoordinator(dom);
+    const p = dom.window.document.querySelector("p");
+    coordinator.enableKanji(runtimePlan((record) => ({ ranges: record.text.startsWith("日本語") ? [
+      { start: 0, end: 3, text: "日本語", reading: "ニホンゴ", romaji: "nihongo" },
+    ] : [] })));
+    try {
+      await waitFor(() => p.querySelector("ruby"));
+      p.lastChild.textContent = "でした";
+      if (!beforeObserver) await tick();
+      coordinator.stop();
+      assert.equal(p.innerHTML, "日本語でした");
+      assert.equal(p.querySelectorAll("[data-yomi-ruby-generated]").length, 0);
+    } finally { coordinator.stop(); dom.window.close(); }
+  });
+}
+
+test("discarded ownership preserves page-added markup and the current base children", async () => {
+  const dom = new JSDOM("<p>日本語です</p>");
+  const coordinator = immediateCoordinator(dom);
+  const { document } = dom.window;
+  const p = document.querySelector("p");
+  coordinator.enableKanji(runtimePlan((record) => ({ ranges: record.text.startsWith("日本語") ? [
+    { start: 0, end: 3, text: "日本語", reading: "ニホンゴ", romaji: "nihongo" },
+  ] : [] })));
+  try {
+    await waitFor(() => p.querySelector("ruby"));
+    const base = p.querySelector(".yomi-ruby-base");
+    const span = document.createElement("span");
+    span.textContent = "日本語";
+    base.replaceChildren(span);
+    const strong = document.createElement("strong");
+    strong.textContent = "でした";
+    p.lastChild.replaceWith(strong);
+    await tick();
+    coordinator.stop();
+    assert.equal(p.innerHTML, "<span>日本語</span><strong>でした</strong>");
+    assert.equal(p.firstChild, span);
+    assert.equal(p.lastChild, strong);
+  } finally { coordinator.stop(); dom.window.close(); }
+});
+
 function immediateCoordinator(dom) {
   return new AnnotationCoordinator({
     document: dom.window.document,
