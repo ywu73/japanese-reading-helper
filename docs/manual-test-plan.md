@@ -1,4 +1,4 @@
-# Desktop Chrome + Tampermonkey manual test plan — Japanese Reading Helper 0.6.3
+# Desktop Chrome + Tampermonkey manual test plan — Japanese Reading Helper 0.6.5
 
 Do not install this candidate, mutate the user's Chrome/Tampermonkey state,
 operate a real site, or disable a separately installed Katakana Terminator
@@ -6,7 +6,7 @@ until the user explicitly authorizes the relevant action. Record the exact
 candidate path, size, SHA-256, Chrome version, Tampermonkey version, proxy state,
 origin, and timestamps.
 
-For the 0.6.3 lifecycle regression fixture, run
+For the 0.6.5 lifecycle regression fixture, run
 `node scripts/serve-browser-smoke.mjs` and open `http://127.0.0.1:8767/`.
 Exercise Reveal/Hide, append/remove 200 paragraphs, mode/provider switches,
 and Check complete rollback after disabling both features. Snapshot reports
@@ -21,7 +21,7 @@ manual menu wait time must not be presented as provider latency.
 
 1. Confirm the installed file is byte-identical to `dist/yomi-ruby.user.js`.
 2. Inspect the combined public `@name`, localized name metadata, namespace,
-   `@version 0.6.3`, MIT
+   `@version 0.6.5`, MIT
    metadata, homepage/support/download/update URLs, two ordinary web `@match`
    values, `@noframes`, twelve SRI `@resource` values, exact grants, and exactly
    three `@connect` values: `translate.googleapis.com`, `www.bing.com`, and
@@ -72,6 +72,10 @@ primary language:
    writes. Confirm each setting family has an independent persistence queue,
    the final persisted request wins, and stale successful writes never restart
    an obsolete provider.
+   Also make the first queued write succeed and the last fail for provider,
+   kanji mode, and locale. Confirm menus and the matching runtime converge on
+   the last successful write. These injected storage failures are covered by
+   `tests/integration/controls.test.js`; distinguish them from native GM writes.
 11. Open two tabs on enabled origins. Change kanji mode and katakana provider in
    one tab. Confirm only `remote === true` value-change events replace the
    matching path in the other tab, no listener writes back, page caches clear,
@@ -103,6 +107,8 @@ primary language:
    start a session, and show one localized error.
 4. Simulate disable-write failure: stop the current page immediately and report
    that reload may start the still-persisted feature.
+   Hold the write pending and confirm the current page is already off; test
+   this independently for both features.
 5. While kanji is active, switch Local/Google/Bing modes. Confirm persistence
    succeeds before old startup/request abort, page-cache clearing, ruby rollback,
    analyzer replacement, and eligible-content rescan. Hold an old result and
@@ -251,7 +257,14 @@ Japanese Reading Helper-owned UI. Confirm:
 
 ## 8. Failure, CSP, and real-site gates
 
-Confirm 0.6.3 still installs/preloads all twelve Kuromoji resources and performs
+For the partial-update regression, enable Local on `browser-smoke.html`, click
+`Edit annotated paragraph tail`, then disable Kanji and click `Check complete
+rollback`. Require zero generated ruby, preserved edited text and markup,
+unchanged hidden/editable author ruby, and the same author child node and click
+listener. The observer-before-stop and stop-before-observer variants are also
+covered by `tests/integration/coordinator.test.js`.
+
+Confirm 0.6.5 still installs/preloads all twelve Kuromoji resources and performs
 no runtime dynamic dictionary download/cache/delete flow. Treat the proposed
 roughly 17 MiB lazy cache as unimplemented rather than as a failed fallback.
 

@@ -12,6 +12,11 @@ optimizations from 0.6.3 and fixes Google's 250 ms request interval across
 separate runtime operations.** See the
 [0.6.4 verification report](docs/verification-report-0.6.4-2026-09-30.md).
 
+The local **0.6.5 candidate is not published**. It fixes immediate disable,
+queued-setting recovery, cleanup after partial page edits, and Google katakana
+response validation. Its automated results and browser-test status are in the
+[0.6.5 verification report](docs/verification-report-0.6.5-2026-10-07.md).
+
 Previously named **YomiRuby**. Existing setting keys, the userscript namespace,
 and the install filename retain `yomi-ruby`. See the [rename and upgrade notes](docs/rename-0.6.2.md).
 
@@ -93,9 +98,14 @@ failure or safe startup failure.
 
 The Kanji Mode and Katakana Translator commands show both the currently saved
 selection and the next selection. A menu does not display a requested setting
-until its independent persistence operation succeeds. A failed write keeps the
-old menu and old runtime. If the saved new selection cannot start, the selection
+until its independent persistence operation succeeds. If the last of several
+queued changes fails, the menu and runtime recover to the last successfully
+saved selection. If the saved new selection cannot start, the selection
 remains saved, only that feature stops, and one temporary error is shown.
+
+Disabling stops the current page and restores its content immediately, without
+waiting for storage. If saving fails, this page stays off and reports that a
+reload may enable the still-saved preference again.
 
 The interface supports English and Simplified Chinese. On first run only,
 Japanese Reading Helper maps a primary browser language beginning with `zh` to Simplified

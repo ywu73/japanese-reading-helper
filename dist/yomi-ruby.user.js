@@ -3,7 +3,7 @@
 // @name:zh-CN   日语阅读助手 — 汉字罗马音与片假名英译
 // @name:en      Japanese Reading Helper — Kanji Romaji & Katakana English
 // @namespace    yomi-ruby.local
-// @version      0.6.4
+// @version      0.6.5
 // @description  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:en  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:zh-CN  为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。
@@ -4591,6 +4591,7 @@
     }
     #restoreRecord(record) {
       if (!this.#recordIsCurrent(record)) {
+        this.#unwrapOwnedRuby(record);
         return;
       }
       if (record.planKey === "[]") {
@@ -4617,12 +4618,21 @@
         for (const node of record.currentNodes) {
           node.remove();
         }
+      } else {
+        this.#unwrapOwnedRuby(record);
       }
       for (const node of record.currentNodes) {
         this.nodeRecords.delete(node);
       }
       record.valid = false;
       this.records.delete(record);
+    }
+    #unwrapOwnedRuby(record) {
+      for (const node of record.currentNodes) {
+        if (this.nodeRecords.get(node) !== record || !node.matches?.("ruby[data-yomi-ruby-generated]")) continue;
+        const base = node.querySelector(":scope > .yomi-ruby-base");
+        if (base) node.replaceWith(...base.childNodes);
+      }
     }
     #discardDetachedOwnership(root) {
       const found = /* @__PURE__ */ new Set();
@@ -4936,6 +4946,11 @@
           } catch (error) {
             if (requestOperation === kanjiModeOperation) {
               desiredKanjiMode = persistedKanjiMode;
+              if (currentKanjiMode !== persistedKanjiMode) {
+                currentKanjiMode = persistedKanjiMode;
+                refreshMenus();
+                await kanji.setMode(currentKanjiMode);
+              }
               showStatus(localizer2.t("error.kanjiRomajiModePersistence", {
                 error: errorMessage(error)
               }), {
@@ -4976,6 +4991,11 @@
           } catch (error) {
             if (requestOperation === providerOperation) {
               desiredProvider = persistedProvider;
+              if (currentProvider !== persistedProvider) {
+                currentProvider = persistedProvider;
+                refreshMenus();
+                await katakana.setProvider(currentProvider);
+              }
               showStatus(localizer2.t("error.translationProviderPersistence", {
                 error: errorMessage(error)
               }), {
@@ -5011,6 +5031,8 @@
         } catch (error) {
           if (requestOperation === languageOperation) {
             desiredLocale = persistedLocale;
+            localizer2.setLocale(persistedLocale);
+            refreshMenus();
             showStatus(localizer2.t("error.localePersistence", { error: errorMessage(error) }), {
               duration: 9e3,
               error: true
@@ -5172,6 +5194,11 @@
         const requestedEnabled = !desiredEnabled;
         desiredEnabled = requestedEnabled;
         const requestOperation = ++operation;
+        if (!requestedEnabled) {
+          session.disable();
+          enabled = false;
+          refreshMenus();
+        }
         try {
           await persist(requestedEnabled);
         } catch (error) {
@@ -5193,8 +5220,6 @@
           refreshMenus();
           if (requestedEnabled) {
             await session.enable();
-          } else {
-            session.disable();
           }
         }
       });
@@ -5414,9 +5439,17 @@
         url,
         timeout,
         anonymous: true,
+        redirect: "error",
         onload(response) {
-          if (response?.status && (response.status < 200 || response.status >= 300)) {
-            finish(reject, new Error(`Google Translate returned HTTP ${response.status}.`));
+          if (!Number.isInteger(response?.status) || response.status < 200 || response.status >= 300) {
+            const status = Number.isInteger(response?.status) ? response.status : "unknown";
+            finish(reject, new Error(`Google Translate returned HTTP ${status}.`));
+            return;
+          }
+          try {
+            validateResponseUrl2(response.finalUrl ?? response.responseURL, url);
+          } catch (error) {
+            finish(reject, error);
             return;
           }
           finish(resolve, response?.responseText ?? "");
@@ -5432,6 +5465,17 @@
         }
       });
     });
+  }
+  function validateResponseUrl2(value, requestedUrl) {
+    let finalUrl;
+    try {
+      finalUrl = new URL(value);
+    } catch {
+      throw new Error("Google Translate returned no valid final URL.");
+    }
+    if (finalUrl.href !== requestedUrl) {
+      throw new Error("Google Translate redirected away from the approved request URL.");
+    }
   }
   function parseTranslations2(responseText, requestedPhrases) {
     const payload = JSON.parse(responseText);
@@ -5531,7 +5575,7 @@
               anonymous: true,
               redirect: "error"
             }, { signal });
-            validateResponseUrl2(response.finalUrl ?? response.responseURL, requestedUrl);
+            validateResponseUrl3(response.finalUrl ?? response.responseURL, requestedUrl);
             return response.responseText;
           };
           const batches = buildBatches4(uniqueWords, {
@@ -5702,7 +5746,7 @@
   function isEligibleWord2(word, maxWordCharacters) {
     return typeof word === "string" && word.length > 0 && word.length <= maxWordCharacters && word === word.trim() && !/[\r\n\u0000-\u001f\u007f]/u.test(word) && !word.includes(BATCH_SEPARATOR) && HAS_KANJI3.test(word);
   }
-  function validateResponseUrl2(value, requestedUrl) {
+  function validateResponseUrl3(value, requestedUrl) {
     let finalUrl;
     try {
       finalUrl = new URL(value);

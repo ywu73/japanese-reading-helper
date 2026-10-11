@@ -37,13 +37,17 @@ The project inherits the global collaboration rules from
   gates are complete; this does not authorize mutable third-party runtime code.
 - Pin every executable dependency to an exact version and a verified SHA-256
   digest before it can be loaded dynamically.
-- If safe lazy loading cannot be verified in Tampermonkey, stop and report the
-  limitation. Do not silently fall back to unverified execution, global eager
-  loading, or a remote reading API.
+- The current build statically bundles executable dependencies and declares all
+  twelve fixed dictionaries as Tampermonkey resources. Local tokenizer creation
+  is lazy: load and verify only Tampermonkey-provided local resource URLs after
+  Local mode is enabled. Do not add runtime remote downloads, unverified
+  execution, eager tokenizer initialization, or a remote reading fallback.
 - Keep both features disabled for an unconfigured origin. Annotate only tokens
   that contain kanji when the kanji module alone is enabled.
 - Use whole-token readings for kanji-kana mixed words.
-- Use Hepburn romaji with macrons by default, such as `kyō` and `Tōkyō`.
+- In Local mode, use Hepburn romaji with macrons, such as `kyō` and `Tōkyō`.
+  Online modes retain accepted provider spelling; do not describe their output
+  as verified Hepburn.
 - If the analyzer does not provide a reliable reading, leave the source text
   unchanged. Do not guess from individual kanji.
 - Keep readings, translations, matches, failures, pending work, temporary Bing
@@ -66,6 +70,11 @@ The project inherits the global collaboration rules from
 - Existing kana ruby readings may be converted to romaji only when their
   original content is retained and can be restored exactly.
 - Dynamic-page observers and queued work must stop when annotation is disabled.
+- Stop the current page immediately on disable, even if saving the preference
+  fails. For mode, provider, and locale writes, recover to the last successfully
+  saved value if a later queued write fails.
+- When a page edits part of an annotated record, remove only this project's
+  wrappers and preserve the page's current text, markup, and child nodes.
 
 ## 4. Architecture and Source Layout
 
@@ -83,11 +92,14 @@ The project inherits the global collaboration rules from
 Before a userscript build is considered deliverable, verify at minimum:
 
 - dependency versions, licenses, URLs, and SHA-256 digests;
-- lazy loading in the supported Tampermonkey environment;
+- lazy local tokenizer activation and verified preloaded resources in the
+  supported Tampermonkey environment;
 - no page text in asset/default-off requests; online requests contain only the
   selected feature's approved exact words or phrases, without surrounding text;
 - strict Bing redirect/config parsing, anonymous requests, bounded 401 refresh,
   CAPTCHA/rate-limit failure, and no cross-provider fallback;
+- strict Google integer 2xx status and final-request URL checks, rejected
+  redirects, and request pacing across successive runtime operations;
 - ordinary kanji, kanji-kana mixed words, macrons, and unknown readings;
 - existing kana ruby conversion and complete restoration;
 - coexistence with Katakana Terminator annotations;

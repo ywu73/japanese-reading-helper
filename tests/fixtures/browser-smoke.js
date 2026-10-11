@@ -25,7 +25,7 @@ function sourceMarkup(root) {
     ruby.replaceWith(document.createTextNode(ruby.querySelector(".yomi-ruby-base").textContent));
   }
   const authorRt = clone.querySelector("#author rt");
-  authorRt.replaceWith(expected.querySelector("#author rt").cloneNode(true));
+  authorRt?.replaceWith(expected.querySelector("#author rt").cloneNode(true));
   return clone.innerHTML;
 }
 
@@ -40,6 +40,9 @@ function snapshot(extra = {}) {
     samples: rubies.slice(0, 16).map((ruby) => [ruby.querySelector(".yomi-ruby-base").textContent, ruby.querySelector("rt").textContent]),
     hiddenAnnotations: article.querySelectorAll('[hidden] [data-yomi-ruby-generated], .concealed [data-yomi-ruby-generated], details:not([open]) p [data-yomi-ruby-generated]').length,
     unsafeAnnotations: article.querySelectorAll('form [data-yomi-ruby-generated], [contenteditable] [data-yomi-ruby-generated], pre [data-yomi-ruby-generated], code [data-yomi-ruby-generated]').length,
+    unsafeAuthorPreserved: ["unsafe-author", "hidden-author"].every((id) =>
+      article.querySelector(`#${id}`).outerHTML === expected.querySelector(`#${id}`).outerHTML),
+    editedParagraphPreserved: sourceMarkup(article.querySelector("#partial-edit")) === expected.querySelector("#partial-edit").innerHTML,
     terminatorPreserved: article.querySelector("#terminator").outerHTML === expected.querySelector("#terminator").outerHTML,
     sourcePreserved: sourceMarkup(article) === expected.innerHTML,
     completeRollback: article.innerHTML === expected.innerHTML,
@@ -77,6 +80,13 @@ document.querySelector("#append").onclick = () => mutate((root) => {
   root.querySelector("#extra").innerHTML = Array.from({ length: 200 }, (_, index) => `<p>項目 ${index}：東京で日本語を勉強する。ゲームとテレビ。</p>`).join("");
 });
 document.querySelector("#remove").onclick = () => mutate((root) => root.querySelector("#extra").replaceChildren());
+document.querySelector("#edit-tail").onclick = () => mutate((root) => {
+  const paragraph = root.querySelector("#partial-edit");
+  const tail = paragraph.lastChild;
+  if (tail.nodeType === Node.TEXT_NODE) {
+    tail.textContent = tail.textContent.replace(/です(?:ね)?$/u, "ですね");
+  }
+});
 document.querySelector("#rollback").onclick = () => {
   const before = authorClicks;
   article.querySelector("#author rt span")?.click();

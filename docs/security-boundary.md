@@ -238,6 +238,21 @@ not change the current mode.
 
 ## Cancellation, response, and DOM gates
 
+Disabling stops the current page before persisting the off preference. A failed
+write leaves the page off and reports that reload may use the old preference.
+Mode, provider, and locale changes converge on the last successful write when
+a later queued write fails; an unpersisted online selection is never started.
+
+Google katakana and kanji requests reject redirects and require an integer 2xx
+status and a final URL matching the requested URL. Missing final URL metadata
+fails closed. Each client's request pacing also covers successive runtime
+operations, while kanji and katakana retain independent pacing state.
+
+When the page changes part of an annotated record, cleanup unwraps remaining
+owned ruby using its current base child nodes. It preserves surrounding page
+edits instead of overwriting them with the original record text. Stopping before
+the MutationObserver delivers the page's change follows the same rule.
+
 All four online adapters serialize their own traffic, while the independent
 kanji and katakana adapters may run concurrently even when they select the same
 host. Disable, kanji-mode
