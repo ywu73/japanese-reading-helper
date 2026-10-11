@@ -25,7 +25,7 @@ test("Google renders a completed batch before the next request and preserves it 
   harness.drain();
   await settle();
   assert.equal(requests.length, 1);
-  requests[0].onload({ status: 200, responseText: JSON.stringify([[["game", "ゲーム"]]]) });
+  requests[0].onload({ status: 200, finalUrl: requests[0].url, responseText: JSON.stringify([[["game", "ゲーム"]]]) });
   await settle();
   assert.equal(requests.length, 2);
   assert.equal(dom.window.document.querySelector("rt").textContent, "game");

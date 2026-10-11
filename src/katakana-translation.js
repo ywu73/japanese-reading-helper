@@ -122,9 +122,17 @@ function requestTranslation(gmRequest, url, { signal, timeout }) {
       url,
       timeout,
       anonymous: true,
+      redirect: "error",
       onload(response) {
-        if (response?.status && (response.status < 200 || response.status >= 300)) {
-          finish(reject, new Error(`Google Translate returned HTTP ${response.status}.`));
+        if (!Number.isInteger(response?.status) || response.status < 200 || response.status >= 300) {
+          const status = Number.isInteger(response?.status) ? response.status : "unknown";
+          finish(reject, new Error(`Google Translate returned HTTP ${status}.`));
+          return;
+        }
+        try {
+          validateResponseUrl(response.finalUrl ?? response.responseURL, url);
+        } catch (error) {
+          finish(reject, error);
           return;
         }
         finish(resolve, response?.responseText ?? "");
@@ -140,6 +148,18 @@ function requestTranslation(gmRequest, url, { signal, timeout }) {
       },
     });
   });
+}
+
+function validateResponseUrl(value, requestedUrl) {
+  let finalUrl;
+  try {
+    finalUrl = new URL(value);
+  } catch {
+    throw new Error("Google Translate returned no valid final URL.");
+  }
+  if (finalUrl.href !== requestedUrl) {
+    throw new Error("Google Translate redirected away from the approved request URL.");
+  }
 }
 
 function parseTranslations(responseText, requestedPhrases) {

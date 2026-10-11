@@ -29,8 +29,11 @@ test("sends only the requested katakana phrases to the fixed endpoint and maps e
   assert.equal("data" in request, false);
   assert.equal("headers" in request, false);
   assert.equal(request.timeout, 8000);
+  assert.equal(request.anonymous, true);
+  assert.equal(request.redirect, "error");
 
   request.onload({
+    finalUrl: request.url,
     status: 200,
     responseText: JSON.stringify([[ ["computer", "コンピューター"], ["game", "ゲーム"] ]]),
   });
@@ -39,6 +42,97 @@ test("sends only the requested katakana phrases to the fixed endpoint and maps e
     ["コンピューター", "computer"],
     ["ゲーム", "game"],
   ]));
+});
+
+test("rejects invalid HTTP status without publishing a batch or starting another request", async (t) => {
+  for (const status of [undefined, 0, "200", 200.5, 199, 300, 429]) {
+    await t.test(`status ${String(status)}`, async () => {
+      const requests = [];
+      const batches = [];
+      const client = createKatakanaTranslationClient({
+        gmRequest(options) {
+          requests.push(options);
+          return { abort() {} };
+        },
+        maxPhrasesPerRequest: 1,
+        minimumIntervalMs: 0,
+      });
+      const translation = client.translatePhrases(["ゲーム", "テレビ"], {
+        onBatch(batch) { batches.push(batch); },
+      });
+      const rejection = assert.rejects(translation, /returned HTTP/u);
+      requests[0].onload({
+        status,
+        finalUrl: requests[0].url,
+        responseText: JSON.stringify([[ ["game", "ゲーム"] ]]),
+      });
+      // Finish any incorrectly accepted follow-up request so a regression fails
+      // by assertion rather than leaving the test waiting on a pending promise.
+      await waitFor(() => requests.length > 1);
+      requests[1]?.onload({
+        status: 200,
+        finalUrl: requests[1].url,
+        responseText: JSON.stringify([[ ["television", "テレビ"] ]]),
+      });
+      await rejection;
+      assert.equal(requests.length, 1);
+      assert.deepEqual(batches, []);
+    });
+  }
+});
+
+test("rejects missing or changed final URLs without publishing a batch or retrying", async (t) => {
+  const cases = [
+    { name: "missing final URL", finalUrl: undefined },
+    { name: "empty final URL", finalUrl: "" },
+    { name: "invalid final URL", finalUrl: "not-a-url" },
+    { name: "different provider", finalUrl: "https://www.bing.com/translator" },
+    { name: "different path", finalUrl: "https://translate.googleapis.com/other" },
+    { name: "different query", finalUrl: "https://translate.googleapis.com/translate_a/single?q=other" },
+  ];
+  for (const { name, finalUrl } of cases) {
+    await t.test(name, async () => {
+      const requests = [];
+      const batches = [];
+      const client = createKatakanaTranslationClient({
+        gmRequest(options) {
+          requests.push(options);
+          return { abort() {} };
+        },
+        minimumIntervalMs: 0,
+      });
+      const translation = client.translatePhrases(["ゲーム"], {
+        onBatch(batch) { batches.push(batch); },
+      });
+      const rejection = assert.rejects(translation, /final URL|redirected/u);
+      requests[0].onload({
+        status: 200,
+        finalUrl,
+        responseText: JSON.stringify([[ ["game", "ゲーム"] ]]),
+      });
+      await rejection;
+      assert.equal(requests.length, 1);
+      assert.deepEqual(batches, []);
+    });
+  }
+});
+
+test("accepts responseURL when the adapter omits finalUrl", async () => {
+  const requests = [];
+  const client = createKatakanaTranslationClient({
+    gmRequest(options) {
+      requests.push(options);
+      return { abort() {} };
+    },
+    minimumIntervalMs: 0,
+  });
+  const translation = client.translatePhrases(["ゲーム"]);
+  requests[0].onload({
+    status: 200,
+    responseURL: requests[0].url,
+    responseText: JSON.stringify([[ ["game", "ゲーム"] ]]),
+  });
+  assert.deepEqual(await translation, new Map([["ゲーム", "game"]]));
 });
 
 test("splits phrase batches and never creates a second request while the first is in flight", async () => {
@@ -57,6 +151,7 @@ test("splits phrase batches and never creates a second request while the first i
   assert.equal(new URL(requests[0].url).searchParams.get("q"), "ゲーム\nテレビ");
 
   requests[0].onload({
+    finalUrl: requests[0].url,
     status: 200,
     responseText: JSON.stringify([[ ["game", "ゲーム"], ["television", "テレビ"] ]]),
   });
@@ -64,6 +159,7 @@ test("splits phrase batches and never creates a second request while the first i
   assert.equal(new URL(requests[1].url).searchParams.get("q"), "ラジオ");
 
   requests[1].onload({
+    finalUrl: requests[1].url,
     status: 200,
     responseText: JSON.stringify([[ ["radio", "ラジオ"] ]]),
   });
@@ -91,12 +187,12 @@ test("splits batches before the encoded request URL exceeds its configured budge
   assert.equal(new URL(requests[0].url).searchParams.get("q"), "ゲーム");
   assert.ok(requests[0].url.length <= 120);
 
-  requests[0].onload({ status: 200, responseText: JSON.stringify([[ ["game", "ゲーム"] ]]) });
+  requests[0].onload({ finalUrl: requests[0].url, status: 200, responseText: JSON.stringify([[ ["game", "ゲーム"] ]]) });
   await waitFor(() => requests.length === 2);
   assert.equal(new URL(requests[1].url).searchParams.get("q"), "テレビ");
   assert.ok(requests[1].url.length <= 120);
 
-  requests[1].onload({ status: 200, responseText: JSON.stringify([[ ["television", "テレビ"] ]]) });
+  requests[1].onload({ finalUrl: requests[1].url, status: 200, responseText: JSON.stringify([[ ["television", "テレビ"] ]]) });
   assert.equal((await translation).size, 2);
 });
 
@@ -118,7 +214,7 @@ test("waits for the configured minimum interval before creating the next batch r
   });
 
   const translation = client.translatePhrases(["ゲーム", "テレビ"]);
-  requests[0].onload({ status: 200, responseText: JSON.stringify([[ ["game", "ゲーム"] ]]) });
+  requests[0].onload({ finalUrl: requests[0].url, status: 200, responseText: JSON.stringify([[ ["game", "ゲーム"] ]]) });
   await waitFor(() => waits.length === 1);
 
   assert.deepEqual(waits, [250]);
@@ -126,7 +222,7 @@ test("waits for the configured minimum interval before creating the next batch r
 
   waitGate.resolve();
   await waitFor(() => requests.length === 2);
-  requests[1].onload({ status: 200, responseText: JSON.stringify([[ ["television", "テレビ"] ]]) });
+  requests[1].onload({ finalUrl: requests[1].url, status: 200, responseText: JSON.stringify([[ ["television", "テレビ"] ]]) });
   assert.equal((await translation).size, 2);
 });
 
@@ -142,6 +238,7 @@ test("rejects empty, unchanged, non-Latin, unknown, and duplicate response mappi
 
   const translation = client.translatePhrases(["ゲーム", "テレビ", "ラジオ", "カメラ"]);
   requests[0].onload({
+    finalUrl: requests[0].url,
     status: 200,
     responseText: JSON.stringify([[
       ["ゲーム", "ゲーム"],
@@ -177,6 +274,7 @@ test("aborts the in-flight GM request and never retries after cancellation", asy
   assert.equal(requests.length, 1);
 
   requests[0].onload({
+    finalUrl: requests[0].url,
     status: 200,
     responseText: JSON.stringify([[ ["game", "ゲーム"] ]]),
   });
@@ -214,7 +312,7 @@ test("fails once on malformed JSON without guessing or retrying", async () => {
   });
 
   const translation = client.translatePhrases(["ゲーム"]);
-  requests[0].onload({ status: 200, responseText: "not-json" });
+  requests[0].onload({ finalUrl: requests[0].url, status: 200, responseText: "not-json" });
 
   await assert.rejects(translation, SyntaxError);
   assert.equal(requests.length, 1);
