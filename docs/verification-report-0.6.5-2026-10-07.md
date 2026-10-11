@@ -117,3 +117,26 @@ fixture observations, not controlled benchmarks. The fixture's first-annotation
 timer also includes manual menu interaction in some sequences and must not be
 interpreted as provider latency. This change does not claim to eliminate main
 thread stalls or introduce worker execution.
+
+## Local merge and installation refresh — 2026-10-11
+
+With explicit user authorization, the three fixes and the integrated package
+were committed separately and fast-forwarded into local `main` at `3397850`.
+The merged artifact retained the SHA-256 above and passed the build audit. The
+original checkout's uncommitted guide changes were preserved. No push, PR or
+public release was performed.
+
+Tampermonkey's same-version Reinstall dialog warned that script settings would
+be reset, so that operation was cancelled. Instead, the complete UTF-8 file
+from the merged `main` worktree was loaded into the existing script's editor
+and saved, preserving the existing entry and storage. The saved installation
+was then exported with Save to disk: `cmp` confirmed **byte-for-byte equality**
+with the merged artifact, **261782 bytes**, SHA-256
+`ea2b6af705b89358a28ff70014322829c2d74df6f95600c2879378b27599ff8d`.
+
+A fresh fixture load after saving started with both features off. Menus retained
+Chinese, Local kanji and Google katakana. A final Local enable produced
+**12 annotations** at 03:57:36 UTC; disabling and checking rollback produced
+**zero annotations**, exact expected markup, and preserved author node/listener
+at 03:57:58 UTC. Both test-origin features were left off. This was a smoke check
+of the byte-identical installed artifact, not a repeat of the full matrix.
