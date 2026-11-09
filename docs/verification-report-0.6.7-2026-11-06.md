@@ -126,7 +126,7 @@ Evidence is saved in `work/tmp/verification-0.6.7-installed/running-menu.png`,
 byte-for-byte comparison. Test tabs and the background DevTools window could
 not be closed through the failing UI connection; the loopback server was stopped.
 
-## Remaining release gates
+## Coverage gaps recorded before the final verification scope decision
 
 Installed basic behavior and restoration passed. Background headers/request
 capture, installed GM cache corruption/quota/offline failures, cancellation
@@ -159,3 +159,38 @@ This report accompanies the local task-branch commits. Merge and push remain
 blocked by the recorded installed-extension gates: pushing main would expose
 the 0.6.7 artifact at the existing automatic-update URL. Git authorization alone
 does not establish that those verification gates passed.
+
+## Additional installed checks and final scope decision — 2026-11-09
+
+Chrome 156 with Tampermonkey 5.5.1 was exercised again on the synthetic strict-CSP
+loopback page. Inspection of the actual script storage found twelve dictionary
+entries containing only `base64` and `sha256`. Recomputed hashes matched their
+stored digests for all twelve entries, totaling 17,791,956 compressed bytes.
+
+A direct extension-storage edit was overwritten by Tampermonkey's in-memory
+state before acquisition and was not counted as a corruption-recovery test.
+The subsequent test paused the installed script at its dictionary read and
+used its actual GM storage functions through temporary fixture buttons. A
+corrupted `tid.dat.gz` entry was replaced by the original cached value and the
+fixture produced twelve expected annotations again. An extension-background
+webRequest listener captured exactly one replacement GET to
+`https://unpkg.com/kuromoji@0.1.2/dict/tid.dat.gz`, with no Cookie, Authorization,
+Origin or Referer header. This observation covers that dictionary request.
+
+Service-worker DevTools Offline did not prevent the actual dictionary request,
+so it did not establish offline behavior. The `No throttling` setting was
+visibly restored.
+A temporary session rule blocking only that exact dictionary URL was prepared,
+but the user ended further testing before its failure/retry scenario completed.
+The removal call for session rule 1900000001 and the request listener completed.
+The temporary fixture's restore/inspect controls subsequently reported the
+dictionary present, uncorrupted and equal to its backup. The last observed
+test-origin Local feature state was running; a later attempt to close it timed
+out. Temporary fixture controls disappear when the test page closes or reloads.
+
+After reviewing the completed and pending checks, the user instructed that
+testing stop at the current coverage. The earlier instruction to commit, merge
+and push main is carried forward with that narrowed verification scope.
+Installed quota failure, effective offline failure, cold-acquisition cancellation
+and online failed-item retry remain unverified. Automated coverage remains as
+recorded above. This decision does not turn unexecuted checks into passed tests.
