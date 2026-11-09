@@ -125,6 +125,23 @@ export class KatakanaRuntime {
     return this.processing || this.flushScheduled || this.queue.length > 0;
   }
 
+  hasFailures() {
+    return this.active && [...this.cache.values()].some((entry) => entry.status === "failure");
+  }
+
+  retryFailures() {
+    if (!this.active || this.hasPendingWork()) return false;
+    let removed = false;
+    for (const [phrase, entry] of this.cache) {
+      if (entry.status === "failure") {
+        this.cache.delete(phrase);
+        removed = true;
+      }
+    }
+    // The coordinator will re-plan connected records and enqueue their failures.
+    return removed;
+  }
+
   stop() {
     this.disable();
   }

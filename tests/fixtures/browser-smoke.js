@@ -3,6 +3,8 @@ const expected = article.cloneNode(true);
 const authorSpan = article.querySelector("#author rt span");
 let authorClicks = 0;
 authorSpan.addEventListener("click", () => authorClicks++);
+let pageAddedSpan = null;
+let pageAddedClicks = 0;
 let firstAnnotationMs = null;
 let lastActionAt = performance.now();
 let mutationBatches = 0;
@@ -22,7 +24,7 @@ new MutationObserver(() => {
 function sourceMarkup(root) {
   const clone = root.cloneNode(true);
   for (const ruby of clone.querySelectorAll("ruby[data-yomi-ruby-generated]")) {
-    ruby.replaceWith(document.createTextNode(ruby.querySelector(".yomi-ruby-base").textContent));
+    ruby.replaceWith(...ruby.querySelector(".yomi-ruby-base").childNodes);
   }
   const authorRt = clone.querySelector("#author rt");
   authorRt?.replaceWith(expected.querySelector("#author rt").cloneNode(true));
@@ -48,6 +50,7 @@ function snapshot(extra = {}) {
     completeRollback: article.innerHTML === expected.innerHTML,
     authorReading: article.querySelector("#author rt").textContent,
     originalAuthorNodeConnected: authorSpan.isConnected,
+    pageAddedNodeConnected: pageAddedSpan == null || pageAddedSpan.isConnected,
     firstAnnotationMs,
     longestTaskMs: Math.max(0, ...longTasks),
     longTaskCount: longTasks.length,
@@ -87,9 +90,29 @@ document.querySelector("#edit-tail").onclick = () => mutate((root) => {
     tail.textContent = tail.textContent.replace(/です(?:ね)?$/u, "ですね");
   }
 });
+document.querySelector("#wrap-base").onclick = () => {
+  const base = article.querySelector("#partial-edit .yomi-ruby-base");
+  if (!base || pageAddedSpan?.isConnected) {
+    snapshot({ fixtureError: "Enable Kanji on this fixture before wrapping its text." });
+    return;
+  }
+  lastActionAt = performance.now(); firstAnnotationMs = null;
+  pageAddedSpan = document.createElement("span");
+  pageAddedSpan.className = "page-added";
+  pageAddedSpan.append(...base.childNodes);
+  pageAddedSpan.addEventListener("click", () => pageAddedClicks++);
+  base.append(pageAddedSpan);
+  const paragraph = expected.querySelector("#partial-edit");
+  const suffix = paragraph.textContent.slice(pageAddedSpan.textContent.length);
+  paragraph.replaceChildren(pageAddedSpan.cloneNode(true), document.createTextNode(suffix));
+  snapshot();
+};
 document.querySelector("#rollback").onclick = () => {
   const before = authorClicks;
+  const pageBefore = pageAddedClicks;
   article.querySelector("#author rt span")?.click();
-  snapshot({ authorListenerPreserved: authorClicks === before + 1 });
+  pageAddedSpan?.click();
+  snapshot({ authorListenerPreserved: authorClicks === before + 1,
+    pageAddedListenerPreserved: pageAddedSpan == null || (pageAddedSpan.isConnected && pageAddedClicks === pageBefore + 1) });
 };
 snapshot();

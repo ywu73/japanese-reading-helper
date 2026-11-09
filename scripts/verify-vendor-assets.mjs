@@ -11,12 +11,15 @@ function sha256(bytes) {
 
 const results = await Promise.all(assets.map(async (asset) => {
   const response = await fetch(asset.url, {
-    redirect: "follow",
-    headers: { "user-agent": "yomi-ruby-vendor-verifier/0.6.1" },
+    redirect: "error",
+    headers: { "user-agent": "japanese-reading-helper-vendor-verifier/0.6.6" },
     signal: AbortSignal.timeout(120_000),
   });
   if (!response.ok) {
     throw new Error(`${asset.name}: HTTP ${response.status} from ${asset.url}`);
+  }
+  if (response.url !== asset.url) {
+    throw new Error(`${asset.name}: response URL differs from the approved immutable asset URL`);
   }
 
   const bytes = Buffer.from(await response.arrayBuffer());

@@ -33,121 +33,161 @@ export function createYomiRubySession({
     mode: kanjiMode,
     analyzerFactories: kanjiAnalyzerFactories,
     onPlanChanged: (record) => coordinator.refresh(record),
-    onIdle: () => coordinator.continuePending(),
+    onIdle: () => { coordinator.continuePending(); notify("kanji"); },
   });
   const katakanaRuntime = new KatakanaRuntime({
     provider: translationProvider,
     translatorFactories: resolvedTranslationFactories,
     onPlanChanged: (record) => coordinator.refresh(record),
-    onIdle: () => coordinator.continuePending(),
+    onIdle: () => { coordinator.continuePending(); notify("katakana"); },
   });
   let kanjiActive = false;
   let kanjiDesired = false;
+  let kanjiOperation = 0;
   let katakanaActive = false;
+  let katakanaDesired = false;
+  let katakanaOperation = 0;
   let removeStyles = null;
   let statusElement = null;
   let statusTimer = null;
+  const states = { kanji: { phase: "off" }, katakana: { phase: "off" } };
+  const listeners = { kanji: new Set(), katakana: new Set() };
+
+  function getState(feature) {
+    const runtime = feature === "kanji" ? kanjiRuntime : katakanaRuntime;
+    return { ...states[feature], hasFailures: runtime.hasFailures() };
+  }
+
+  function notify(feature) {
+    for (const listener of listeners[feature]) listener(getState(feature));
+  }
+
+  function setState(feature, phase, progress = {}) {
+    states[feature] = { phase, ...progress };
+    notify(feature);
+  }
+
+  function subscribe(feature, listener) {
+    listeners[feature].add(listener);
+    return () => listeners[feature].delete(listener);
+  }
 
   const kanji = {
+    getState: () => getState("kanji"),
+    subscribe: (listener) => subscribe("kanji", listener),
     async enable() {
-      if (kanjiActive) {
-        return;
-      }
+      if (kanjiActive || kanjiDesired) return;
+      const operation = ++kanjiOperation;
       kanjiDesired = true;
+      setState("kanji", "loading");
       ensureStyles();
       try {
-        await kanjiRuntime.enable();
-        if (!kanjiDesired || !kanjiRuntime.active) {
-          return;
-        }
+        await kanjiRuntime.enable({ onProgress: (progress) => {
+          if (operation === kanjiOperation) setState("kanji", "loading", progress);
+        } });
+        if (operation !== kanjiOperation || !kanjiDesired || !kanjiRuntime.active) return;
         coordinator.enableKanji(kanjiRuntime);
         kanjiActive = true;
+        setState("kanji", "running");
       } catch (error) {
+        if (operation !== kanjiOperation) return;
         kanjiDesired = false;
         kanjiRuntime.disable();
         coordinator.disableKanji();
+        setState("kanji", "error");
         showStartupError("kanji", error);
       } finally {
         removeStylesIfUnused();
       }
     },
     disable() {
+      kanjiOperation += 1;
       kanjiDesired = false;
       kanjiActive = false;
       coordinator.disableKanji();
       kanjiRuntime.disable();
+      setState("kanji", "off");
       removeStatus();
       removeStylesIfUnused();
     },
     async setMode(mode) {
-      if (!kanjiActive) {
+      if (mode === kanjiRuntime.mode) return;
+      const restart = kanjiDesired || states.kanji.phase === "error";
+      if (!restart) {
         await kanjiRuntime.setMode(mode);
         return;
       }
-      coordinator.disableKanji();
-      kanjiActive = false;
-      try {
-        await kanjiRuntime.setMode(mode);
-        if (kanjiRuntime.active && kanjiDesired) {
-          coordinator.enableKanji(kanjiRuntime);
-          kanjiActive = true;
-        }
-      } catch (error) {
-        kanjiDesired = false;
-        kanjiRuntime.disable();
-        showStartupError("kanji", error);
-      } finally {
-        removeStylesIfUnused();
+      kanji.disable();
+      const operation = kanjiOperation;
+      await kanjiRuntime.setMode(mode);
+      if (restart && operation === kanjiOperation) await kanji.enable();
+    },
+    async retry() {
+      if (states.kanji.phase === "error") {
+        removeStatus();
+        await kanji.enable();
+      } else if (kanjiRuntime.retryFailures()) {
+        coordinator.reprocess();
+        notify("kanji");
       }
     },
   };
 
   const katakana = {
+    getState: () => getState("katakana"),
+    subscribe: (listener) => subscribe("katakana", listener),
     async enable() {
-      if (katakanaActive) {
-        return;
-      }
+      if (katakanaActive || katakanaDesired) return;
+      const operation = ++katakanaOperation;
+      katakanaDesired = true;
+      setState("katakana", "loading");
       ensureStyles();
       try {
         await katakanaRuntime.enable();
-        if (!katakanaRuntime.active) {
-          return;
-        }
+        if (operation !== katakanaOperation || !katakanaDesired || !katakanaRuntime.active) return;
         coordinator.enableKatakana(katakanaRuntime);
         katakanaActive = true;
+        setState("katakana", "running");
       } catch (error) {
+        if (operation !== katakanaOperation) return;
+        katakanaDesired = false;
         katakanaRuntime.disable();
         coordinator.disableKatakana();
+        setState("katakana", "error");
         showStartupError("katakana", error);
       } finally {
         removeStylesIfUnused();
       }
     },
     disable() {
+      katakanaOperation += 1;
+      katakanaDesired = false;
       katakanaActive = false;
       coordinator.disableKatakana();
       katakanaRuntime.disable();
+      setState("katakana", "off");
       removeStatus();
       removeStylesIfUnused();
     },
     async setProvider(provider) {
-      if (!katakanaActive) {
+      if (provider === katakanaRuntime.provider) return;
+      const restart = katakanaDesired || states.katakana.phase === "error";
+      if (!restart) {
         await katakanaRuntime.setProvider(provider);
         return;
       }
-      coordinator.disableKatakana();
-      katakanaActive = false;
-      try {
-        await katakanaRuntime.setProvider(provider);
-        if (katakanaRuntime.active) {
-          coordinator.enableKatakana(katakanaRuntime);
-          katakanaActive = true;
-        }
-      } catch (error) {
-        katakanaRuntime.disable();
-        showStartupError("katakana", error);
-      } finally {
-        removeStylesIfUnused();
+      katakana.disable();
+      const operation = katakanaOperation;
+      await katakanaRuntime.setProvider(provider);
+      if (restart && operation === katakanaOperation) await katakana.enable();
+    },
+    async retry() {
+      if (states.katakana.phase === "error") {
+        removeStatus();
+        await katakana.enable();
+      } else if (katakanaRuntime.retryFailures()) {
+        coordinator.reprocess();
+        notify("katakana");
       }
     },
   };
@@ -189,19 +229,24 @@ export function createYomiRubySession({
   }
 
   function removeStylesIfUnused() {
-    if (!kanjiActive && !kanjiDesired && !katakanaActive && !statusElement) {
+    if (!kanjiActive && !kanjiDesired && !katakanaActive && !katakanaDesired && !statusElement) {
       removeStyles?.();
       removeStyles = null;
     }
   }
 
   function stop() {
+    kanjiOperation += 1;
+    katakanaOperation += 1;
+    katakanaDesired = false;
     kanjiDesired = false;
     kanjiActive = false;
     katakanaActive = false;
     kanjiRuntime.stop();
     katakanaRuntime.stop();
     coordinator.stop();
+    setState("kanji", "off");
+    setState("katakana", "off");
     removeStatus();
     removeStyles?.();
     removeStyles = null;

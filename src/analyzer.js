@@ -10,6 +10,60 @@ export function createAnalyzer(tokenizer) {
   return (text) => segmentsFromTokens(text, tokenizer.tokenize(text));
 }
 
+// Kuromoji already starts a separate lattice after 、 and 。. Yield only at
+// those boundaries so scheduling does not change the analyzer's context.
+export function createCooperativeAnalyzer(tokenizer, { chunkSize = 1024, yieldTask = nextTask } = {}) {
+  const analyze = createAnalyzer(tokenizer);
+  return (text, options = {}) => {
+    throwIfAborted(options.signal);
+    if (text.length <= chunkSize) return analyze(text);
+    return analyzeLongText(text, options);
+  };
+
+  async function analyzeLongText(text, { signal }) {
+    const segments = [];
+    let start = 0;
+    for (const match of text.matchAll(/[、。]/gu)) {
+      const end = match.index + 1;
+      if (end - start < chunkSize) continue;
+      throwIfAborted(signal);
+      appendSegments(segments, analyze(text.slice(start, end)));
+      start = end;
+      if (start < text.length) await yieldTask(signal);
+    }
+    throwIfAborted(signal);
+    appendSegments(segments, analyze(text.slice(start)));
+    return segments;
+  }
+}
+
+function appendSegments(target, segments) {
+  for (const segment of segments) {
+    if (segment.type === "text") appendText(target, segment.text);
+    else target.push(segment);
+  }
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw new DOMException("Analysis aborted.", "AbortError");
+}
+
+function nextTask(signal) {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      reject(new DOMException("Analysis aborted.", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, 0);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
+}
+
 export function segmentsFromTokens(text, tokens) {
   if (typeof text !== "string" || !Array.isArray(tokens) || text.length === 0) {
     return text ? [{ type: "text", text }] : [];

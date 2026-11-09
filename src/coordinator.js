@@ -45,6 +45,7 @@ export class AnnotationCoordinator {
     this.reprocessIterator = null;
     this.reprocessSeen = new WeakSet();
     this.scanJobs = [];
+    this.renderJobs = new Map();
     this.scanStyleCache = null;
     this.flushTimer = null;
     this.scanHandle = null;
@@ -107,6 +108,10 @@ export class AnnotationCoordinator {
     this.#scheduleNodeDrain();
   }
 
+  reprocess() {
+    this.#reprocessAll({ deferred: true });
+  }
+
   stop() {
     this.kanjiRuntime = null;
     this.katakanaRuntime = null;
@@ -156,6 +161,7 @@ export class AnnotationCoordinator {
     this.revalidationRequested = false;
     this.reprocessIterator = null;
     this.scanJobs.length = 0;
+    this.renderJobs.clear();
     for (const record of this.records) {
       this.#restoreRecord(record);
     }
@@ -363,6 +369,12 @@ export class AnnotationCoordinator {
       && (processed === 0 || this.now() - startedAt < this.scanBudgetMs)
       && (deadline.didTimeout || deadline.timeRemaining() > 1)
     ) {
+      const renderJob = this.renderJobs.values().next().value;
+      if (renderJob) {
+        this.#advanceRenderJob(renderJob);
+        processed += 1;
+        continue;
+      }
       const ready = this.viewport?.takeReady();
       if (ready) {
         this.#activateDeferred(ready);
@@ -438,7 +450,7 @@ export class AnnotationCoordinator {
   }
 
   #hasRunnableWork(continuingBackgroundBatch = false) {
-    return this.reprocessIterator || this.scanJobs.length > 0 || this.viewport?.hasReady || (
+    return this.renderJobs.size > 0 || this.reprocessIterator || this.scanJobs.length > 0 || this.viewport?.hasReady || (
       this.viewport?.hasDeferred && (continuingBackgroundBatch || (
         !this.kanjiRuntime?.hasPendingWork?.() && !this.katakanaRuntime?.hasPendingWork?.()
       ))
@@ -477,6 +489,7 @@ export class AnnotationCoordinator {
   }
 
   #reprocessAll({ deferred = false } = {}) {
+    this.renderJobs.clear();
     if (this.hidden) {
       return;
     }
@@ -500,42 +513,79 @@ export class AnnotationCoordinator {
       range.start, range.end, range.feature, range.annotation, range.reading, range.romaji,
     ]));
     if (record.planKey === planKey) {
+      this.renderJobs.delete(record);
       return;
     }
+    if (this.renderJobs.get(record)?.planKey === planKey) return;
     const parent = record.currentNodes[0]?.parentNode;
     if (!parent || record.currentNodes.some((node) => node.parentNode !== parent)) {
       this.#discardRecord(record);
       return;
     }
-    const fragment = this.document.createDocumentFragment();
-    let cursor = 0;
-    for (const range of annotations) {
-      if (range.start < cursor) {
-        continue;
-      }
-      if (range.start > cursor) {
-        fragment.append(this.document.createTextNode(record.originalText.slice(cursor, range.start)));
+    const job = {
+      record, annotations, planKey, index: 0, cursor: 0, tail: null,
+      chunked: annotations.length > 128,
+      fragment: this.document.createDocumentFragment(),
+    };
+    this.renderJobs.set(record, job);
+    if (job.chunked) {
+      this.#scheduleNodeDrain();
+      return;
+    }
+    while (this.renderJobs.get(record) === job) this.#advanceRenderJob(job);
+  }
+
+  #advanceRenderJob(job) {
+    const { record, annotations, fragment } = job;
+    if (job.index < annotations.length) {
+      const range = annotations[job.index++];
+      if (range.start < job.cursor) return;
+      if (range.start > job.cursor) {
+        fragment.append(this.document.createTextNode(record.originalText.slice(job.cursor, range.start)));
       }
       fragment.append(this.#createRuby(range));
-      cursor = range.end;
+      job.cursor = range.end;
+      if (job.chunked && job.index % 128 === 0) this.#commitRenderChunk(job, false);
+      return;
     }
-    if (cursor < record.originalText.length) {
-      fragment.append(this.document.createTextNode(record.originalText.slice(cursor)));
+    this.renderJobs.delete(record);
+    this.#commitRenderChunk(job, true);
+  }
+
+  #commitRenderChunk(job, complete) {
+    const { record, fragment } = job;
+    // Revalidate every live insertion. The unprocessed suffix remains a tracked
+    // source node, so partial rendering can be cancelled or restored normally.
+    if (!this.#recordIsCurrent(record) || shouldSkipTextContainer(record.currentNodes[0]?.parentElement)) {
+      this.#discardRecord(record);
+      return;
     }
-    if (!fragment.childNodes.length) {
-      fragment.append(this.document.createTextNode(record.originalText));
-    }
+    const parent = record.currentNodes[0].parentNode;
     const nextNodes = [...fragment.childNodes];
+    const suffix = record.originalText.slice(job.cursor);
     this.scanStyleCache = new WeakMap();
-    parent.insertBefore(fragment, record.currentNodes[0]);
-    for (const node of record.currentNodes) {
-      node.remove();
+    if (!job.tail) {
+      job.tail = this.document.createTextNode(suffix);
+      fragment.append(job.tail);
+      nextNodes.push(job.tail);
+      parent.insertBefore(fragment, record.currentNodes[0]);
+      for (const node of record.currentNodes) node.remove();
+      record.currentNodes = nextNodes;
+      record.sourceNodes = nextNodes.flatMap(sourceNodes);
+    } else {
+      parent.insertBefore(fragment, job.tail);
+      if (job.tail.data !== suffix) job.tail.data = suffix;
+      record.currentNodes.splice(record.currentNodes.length - 1, 0, ...nextNodes);
+      record.sourceNodes.splice(record.sourceNodes.length - 1, 0, ...nextNodes.flatMap(sourceNodes));
     }
-    record.currentNodes = nextNodes;
-    record.planKey = planKey;
-    for (const node of nextNodes) {
-      this.nodeRecords.set(node, record);
+    for (const node of nextNodes) this.nodeRecords.set(node, record);
+    if (complete && job.tail.data === "") {
+      job.tail.remove();
+      this.nodeRecords.delete(job.tail);
+      record.currentNodes.pop();
+      record.sourceNodes.pop();
     }
+    record.planKey = complete ? job.planKey : `partial:${job.planKey}`;
   }
 
   #createRuby(range) {
@@ -582,6 +632,7 @@ export class AnnotationCoordinator {
   }
 
   #discardRecord(record) {
+    this.renderJobs.delete(record);
     if (!this.records.has(record)) {
       return;
     }
@@ -594,6 +645,7 @@ export class AnnotationCoordinator {
       && record.planKey !== "[]"
       && record.currentNodes.every((node) => node.parentNode === parent)
       && record.currentNodes.map(sourceText).join("") === record.originalText
+      && sourceNodesAreUnchanged(record)
     ) {
       const text = this.document.createTextNode(record.originalText);
       parent.insertBefore(text, record.currentNodes[0]);
@@ -611,12 +663,12 @@ export class AnnotationCoordinator {
   }
 
   #unwrapOwnedRuby(record) {
-    // A page may edit or move only part of a record. Remove our annotation
-    // wrappers without replacing the page's current text, markup, or nodes.
+    // Even unchanged source text may contain page-added nodes and listeners.
+    // Remove only our wrappers without rebuilding the page's current content.
     for (const node of record.currentNodes) {
       if (this.nodeRecords.get(node) !== record
         || !node.matches?.("ruby[data-yomi-ruby-generated]")) continue;
-      const base = node.querySelector(":scope > .yomi-ruby-base");
+      const base = ownedBase(node);
       if (base) node.replaceWith(...base.childNodes);
     }
   }
@@ -647,7 +699,8 @@ export class AnnotationCoordinator {
     return Boolean(
       parent
       && record.currentNodes.every((node) => node.isConnected && node.parentNode === parent)
-      && record.currentNodes.map(sourceText).join("") === record.originalText,
+      && record.currentNodes.map(sourceText).join("") === record.originalText
+      && sourceNodesAreUnchanged(record),
     );
   }
 
@@ -716,7 +769,27 @@ function sourceText(node) {
     return node.textContent;
   }
   if (node.nodeType === 1 && node.hasAttribute("data-yomi-ruby-generated")) {
-    return node.querySelector(":scope > .yomi-ruby-base")?.textContent ?? "";
+    return ownedBase(node)?.textContent ?? "";
   }
   return node.textContent ?? "";
+}
+
+function sourceNodes(node) {
+  if (node.nodeType === 1 && node.hasAttribute("data-yomi-ruby-generated")) {
+    return [...(ownedBase(node)?.childNodes ?? [])];
+  }
+  return [node];
+}
+
+function sourceNodesAreUnchanged(record) {
+  if (!record.sourceNodes) return true;
+  const current = record.currentNodes.flatMap(sourceNodes);
+  return record.sourceNodes.length === current.length
+    && record.sourceNodes.every((node, index) => node === current[index]);
+}
+
+function ownedBase(node) {
+  const first = node.firstElementChild;
+  if (first?.classList.contains("yomi-ruby-base")) return first;
+  return node.querySelector(":scope > .yomi-ruby-base");
 }

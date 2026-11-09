@@ -24,16 +24,13 @@ const embeddedLegal = (await Promise.all(legalFiles.map(async ([title, relativeP
   ].join("\n");
 }))).join("\n//\n");
 const runtimeManifest = {
-  dictionary: vendorManifest.dictionary.map(({ name, resourceName, size, sha256 }) => ({
+  dictionary: vendorManifest.dictionary.map(({ name, url, size, sha256 }) => ({
     name,
-    resourceName,
+    url,
     size,
     sha256,
   })),
 };
-const resourceMetadata = vendorManifest.dictionary
-  .map((asset) => `// @resource     ${asset.resourceName} ${asset.url}#sha256=${asset.sha256}`)
-  .join("\n");
 const header = `// ==UserScript==
 // @name         日语阅读助手 — 汉字罗马音与片假名英译
 // @name:zh-CN   日语阅读助手 — 汉字罗马音与片假名英译
@@ -52,12 +49,11 @@ const header = `// ==UserScript==
 // @match        https://*/*
 // @noframes
 // @run-at       document-idle
-${resourceMetadata}
 // @connect      translate.googleapis.com
 // @connect      www.bing.com
 // @connect      cn.bing.com
+// @connect      unpkg.com
 // @grant        GM_xmlhttpRequest
-// @grant        GM_getResourceURL
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
 // @grant        GM_getValue

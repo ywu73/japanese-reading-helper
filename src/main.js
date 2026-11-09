@@ -1,5 +1,5 @@
 import manifest from "yomi-ruby:runtime-manifest";
-import { createAnalyzer } from "./analyzer.js";
+import { createCooperativeAnalyzer } from "./analyzer.js";
 import { createBingKanjiRomajiClient } from "./bing-kanji-romaji.js";
 import { createBingTranslationClient } from "./bing-translation.js";
 import { AnnotationCoordinator } from "./coordinator.js";
@@ -10,7 +10,7 @@ import { createGoogleKanjiRomajiClient } from "./google-kanji-romaji.js";
 import { createOnlineKanjiAnalyzer } from "./online-kanji-analyzer.js";
 import { createYomiRubySession } from "./session.js";
 import { initializeKanjiRomajiMode, initializeTranslationProvider } from "./settings.js";
-import { loadVerifiedKuromoji } from "./vendor-loader.js";
+import { loadLazyVerifiedKuromoji } from "./lazy-dictionary-loader.js";
 
 const coordinator = new AnnotationCoordinator({ document });
 const localizer = createLocalizer("en");
@@ -52,11 +52,13 @@ async function bootstrap() {
     }).translatePhrases,
   };
   const kanjiAnalyzerFactories = {
-    local: async ({ signal }) => createAnalyzer(await loadVerifiedKuromoji({
+    local: async ({ signal, onProgress }) => createCooperativeAnalyzer(await loadLazyVerifiedKuromoji({
       manifest,
-      getResourceUrl: GM_getResourceURL,
       gmRequest: GM_xmlhttpRequest,
+      getValue: GM_getValue,
+      setValue: GM_setValue,
       signal,
+      onProgress,
     })),
     google: async () => createOnlineKanjiAnalyzer({
       romanizeWords: createGoogleKanjiRomajiClient({

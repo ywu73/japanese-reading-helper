@@ -3,7 +3,7 @@
 // @name:zh-CN   日语阅读助手 — 汉字罗马音与片假名英译
 // @name:en      Japanese Reading Helper — Kanji Romaji & Katakana English
 // @namespace    yomi-ruby.local
-// @version      0.6.5
+// @version      0.6.7
 // @description  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:en  Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text.
 // @description:zh-CN  为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。
@@ -16,23 +16,11 @@
 // @match        https://*/*
 // @noframes
 // @run-at       document-idle
-// @resource     yomi-ruby-dict-base https://unpkg.com/kuromoji@0.1.2/dict/base.dat.gz#sha256=0803327762e1c93ca731e4319ab8343340f2806bb84941207782cde9d2d5a8eb
-// @resource     yomi-ruby-dict-cc https://unpkg.com/kuromoji@0.1.2/dict/cc.dat.gz#sha256=02b7631be0d4de3a1a75cd9f9cc51536e4f94c9e6b389b813e06ba0f6e7de765
-// @resource     yomi-ruby-dict-check https://unpkg.com/kuromoji@0.1.2/dict/check.dat.gz#sha256=193ae0035fff6fe812b58d9ee730e7a7d7ee601d918481ce51075c58114f6cc9
-// @resource     yomi-ruby-dict-tid https://unpkg.com/kuromoji@0.1.2/dict/tid.dat.gz#sha256=d43d831cb6fb0f0a411739cd287a6d5e998e121a8daca614df14a81a0dcac586
-// @resource     yomi-ruby-dict-tid-map https://unpkg.com/kuromoji@0.1.2/dict/tid_map.dat.gz#sha256=33efd5ffd87a70f669add093fa39dee44341d58f940844ef107c8fd98bb795b2
-// @resource     yomi-ruby-dict-tid-pos https://unpkg.com/kuromoji@0.1.2/dict/tid_pos.dat.gz#sha256=60dbfc99a6ab993f30c5dab648bec6ad7f9aaefa5c14e1843837d95e509f8895
-// @resource     yomi-ruby-dict-unk https://unpkg.com/kuromoji@0.1.2/dict/unk.dat.gz#sha256=f7f991cdeb9bfd3e9c0e4577cc50ee0815a11c508cccd444a9d3ab3c81521100
-// @resource     yomi-ruby-dict-unk-char https://unpkg.com/kuromoji@0.1.2/dict/unk_char.dat.gz#sha256=9a8e86fd9aff32d323fbb59f5a7006f05927a11f8173c90712cc56293aeb3225
-// @resource     yomi-ruby-dict-unk-compat https://unpkg.com/kuromoji@0.1.2/dict/unk_compat.dat.gz#sha256=50f60aa29bc2e86c2903ab8c825bb6fa604d2b294d96941c1d3924259791899d
-// @resource     yomi-ruby-dict-unk-invoke https://unpkg.com/kuromoji@0.1.2/dict/unk_invoke.dat.gz#sha256=6b210889548457c3006913afd12c8b525562255f2709e404604be9614a25e94c
-// @resource     yomi-ruby-dict-unk-map https://unpkg.com/kuromoji@0.1.2/dict/unk_map.dat.gz#sha256=6df12460e5477230bb6fd9641def918b699fc0a8868016b6c9f794488630509b
-// @resource     yomi-ruby-dict-unk-pos https://unpkg.com/kuromoji@0.1.2/dict/unk_pos.dat.gz#sha256=5b183a29f281acc7e0542beca47b83f7985047c0a2d27e78a66f32276be5ad11
 // @connect      translate.googleapis.com
 // @connect      www.bing.com
 // @connect      cn.bing.com
+// @connect      unpkg.com
 // @grant        GM_xmlhttpRequest
-// @grant        GM_getResourceURL
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
 // @grant        GM_getValue
@@ -2711,7 +2699,7 @@
   });
 
   // yomi-ruby:runtime-manifest
-  var runtime_manifest_default = { "dictionary": [{ "name": "base.dat.gz", "resourceName": "yomi-ruby-dict-base", "size": 3956825, "sha256": "0803327762e1c93ca731e4319ab8343340f2806bb84941207782cde9d2d5a8eb" }, { "name": "cc.dat.gz", "resourceName": "yomi-ruby-dict-cc", "size": 1692067, "sha256": "02b7631be0d4de3a1a75cd9f9cc51536e4f94c9e6b389b813e06ba0f6e7de765" }, { "name": "check.dat.gz", "resourceName": "yomi-ruby-dict-check", "size": 3111633, "sha256": "193ae0035fff6fe812b58d9ee730e7a7d7ee601d918481ce51075c58114f6cc9" }, { "name": "tid.dat.gz", "resourceName": "yomi-ruby-dict-tid", "size": 1605820, "sha256": "d43d831cb6fb0f0a411739cd287a6d5e998e121a8daca614df14a81a0dcac586" }, { "name": "tid_map.dat.gz", "resourceName": "yomi-ruby-dict-tid-map", "size": 1485576, "sha256": "33efd5ffd87a70f669add093fa39dee44341d58f940844ef107c8fd98bb795b2" }, { "name": "tid_pos.dat.gz", "resourceName": "yomi-ruby-dict-tid-pos", "size": 5916009, "sha256": "60dbfc99a6ab993f30c5dab648bec6ad7f9aaefa5c14e1843837d95e509f8895" }, { "name": "unk.dat.gz", "resourceName": "yomi-ruby-dict-unk", "size": 10512, "sha256": "f7f991cdeb9bfd3e9c0e4577cc50ee0815a11c508cccd444a9d3ab3c81521100" }, { "name": "unk_char.dat.gz", "resourceName": "yomi-ruby-dict-unk-char", "size": 306, "sha256": "9a8e86fd9aff32d323fbb59f5a7006f05927a11f8173c90712cc56293aeb3225" }, { "name": "unk_compat.dat.gz", "resourceName": "yomi-ruby-dict-unk-compat", "size": 338, "sha256": "50f60aa29bc2e86c2903ab8c825bb6fa604d2b294d96941c1d3924259791899d" }, { "name": "unk_invoke.dat.gz", "resourceName": "yomi-ruby-dict-unk-invoke", "size": 1140, "sha256": "6b210889548457c3006913afd12c8b525562255f2709e404604be9614a25e94c" }, { "name": "unk_map.dat.gz", "resourceName": "yomi-ruby-dict-unk-map", "size": 1190, "sha256": "6df12460e5477230bb6fd9641def918b699fc0a8868016b6c9f794488630509b" }, { "name": "unk_pos.dat.gz", "resourceName": "yomi-ruby-dict-unk-pos", "size": 10540, "sha256": "5b183a29f281acc7e0542beca47b83f7985047c0a2d27e78a66f32276be5ad11" }] };
+  var runtime_manifest_default = { "dictionary": [{ "name": "base.dat.gz", "url": "https://unpkg.com/kuromoji@0.1.2/dict/base.dat.gz", "size": 3956825, "sha256": "0803327762e1c93ca731e4319ab8343340f2806bb84941207782cde9d2d5a8eb" }, { "name": "cc.dat.gz", "url": "https://unpkg.com/kuromoji@0.1.2/dict/cc.dat.gz", "size": 1692067, "sha256": "02b7631be0d4de3a1a75cd9f9cc51536e4f94c9e6b389b813e06ba0f6e7de765" }, { "name": "check.dat.gz", "url": "https://unpkg.com/kuromoji@0.1.2/dict/check.dat.gz", "size": 3111633, "sha256": "193ae0035fff6fe812b58d9ee730e7a7d7ee601d918481ce51075c58114f6cc9" }, { "name": "tid.dat.gz", "url": "https://unpkg.com/kuromoji@0.1.2/dict/tid.dat.gz", "size": 1605820, "sha256": "d43d831cb6fb0f0a411739cd287a6d5e998e121a8daca614df14a81a0dcac586" }, { "name": "tid_map.dat.gz", "url": "https://unpkg.com/kuromoji@0.1.2/dict/tid_map.dat.gz", "size": 1485576, "sha256": "33efd5ffd87a70f669add093fa39dee44341d58f940844ef107c8fd98bb795b2" }, { "name": "tid_pos.dat.gz", "url": "https://unpkg.com/kuromoji@0.1.2/dict/tid_pos.dat.gz", "size": 5916009, "sha256": "60dbfc99a6ab993f30c5dab648bec6ad7f9aaefa5c14e1843837d95e509f8895" }, { "name": "unk.dat.gz", "url": "https://unpkg.com/kuromoji@0.1.2/dict/unk.dat.gz", "size": 10512, "sha256": "f7f991cdeb9bfd3e9c0e4577cc50ee0815a11c508cccd444a9d3ab3c81521100" }, { "name": "unk_char.dat.gz", "url": "https://unpkg.com/kuromoji@0.1.2/dict/unk_char.dat.gz", "size": 306, "sha256": "9a8e86fd9aff32d323fbb59f5a7006f05927a11f8173c90712cc56293aeb3225" }, { "name": "unk_compat.dat.gz", "url": "https://unpkg.com/kuromoji@0.1.2/dict/unk_compat.dat.gz", "size": 338, "sha256": "50f60aa29bc2e86c2903ab8c825bb6fa604d2b294d96941c1d3924259791899d" }, { "name": "unk_invoke.dat.gz", "url": "https://unpkg.com/kuromoji@0.1.2/dict/unk_invoke.dat.gz", "size": 1140, "sha256": "6b210889548457c3006913afd12c8b525562255f2709e404604be9614a25e94c" }, { "name": "unk_map.dat.gz", "url": "https://unpkg.com/kuromoji@0.1.2/dict/unk_map.dat.gz", "size": 1190, "sha256": "6df12460e5477230bb6fd9641def918b699fc0a8868016b6c9f794488630509b" }, { "name": "unk_pos.dat.gz", "url": "https://unpkg.com/kuromoji@0.1.2/dict/unk_pos.dat.gz", "size": 10540, "sha256": "5b183a29f281acc7e0542beca47b83f7985047c0a2d27e78a66f32276be5ad11" }] };
 
   // src/romanize.js
   var KANA = new Map(Object.entries({
@@ -2972,6 +2960,53 @@
     }
     return (text) => segmentsFromTokens(text, tokenizer.tokenize(text));
   }
+  function createCooperativeAnalyzer(tokenizer, { chunkSize = 1024, yieldTask = nextTask } = {}) {
+    const analyze = createAnalyzer(tokenizer);
+    return (text, options = {}) => {
+      throwIfAborted(options.signal);
+      if (text.length <= chunkSize) return analyze(text);
+      return analyzeLongText(text, options);
+    };
+    async function analyzeLongText(text, { signal }) {
+      const segments = [];
+      let start = 0;
+      for (const match of text.matchAll(/[、。]/gu)) {
+        const end = match.index + 1;
+        if (end - start < chunkSize) continue;
+        throwIfAborted(signal);
+        appendSegments(segments, analyze(text.slice(start, end)));
+        start = end;
+        if (start < text.length) await yieldTask(signal);
+      }
+      throwIfAborted(signal);
+      appendSegments(segments, analyze(text.slice(start)));
+      return segments;
+    }
+  }
+  function appendSegments(target, segments) {
+    for (const segment of segments) {
+      if (segment.type === "text") appendText(target, segment.text);
+      else target.push(segment);
+    }
+  }
+  function throwIfAborted(signal) {
+    if (signal?.aborted) throw new DOMException("Analysis aborted.", "AbortError");
+  }
+  function nextTask(signal) {
+    return new Promise((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", onAbort);
+        reject(new DOMException("Analysis aborted.", "AbortError"));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, 0);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) onAbort();
+    });
+  }
   function segmentsFromTokens(text, tokens) {
     if (typeof text !== "string" || !Array.isArray(tokens) || text.length === 0) {
       return text ? [{ type: "text", text }] : [];
@@ -3084,7 +3119,7 @@
     let lastBatchStartedAt = null;
     const romanizeWords = (words, { signal, onBatch } = {}) => {
       const operation = operationQueue.then(async () => {
-        throwIfAborted(signal);
+        throwIfAborted2(signal);
         const uniqueWords = [...new Set(words.filter((word) => isEligibleWord(
           word,
           maxWordCharacters
@@ -3099,7 +3134,7 @@
           for (const [word, romaji] of romanizedBatch) {
             readings.set(word, romaji);
           }
-          throwIfAborted(signal);
+          throwIfAborted2(signal);
           onBatch?.({ words: batch, readings: romanizedBatch });
         }
         return readings;
@@ -3173,7 +3208,7 @@
       }
     }
     async function requestBatch(activeConfig, words, signal) {
-      throwIfAborted(signal);
+      throwIfAborted2(signal);
       lastBatchStartedAt = now();
       const url = new URL("/ttranslatev3", activeConfig.origin);
       url.searchParams.set("isVertical", "1");
@@ -3418,7 +3453,7 @@
       this.status = status;
     }
   };
-  function throwIfAborted(signal) {
+  function throwIfAborted2(signal) {
     if (signal?.aborted) {
       throw abortError();
     }
@@ -3496,7 +3531,7 @@
     let lastBatchStartedAt = null;
     const translatePhrases = (phrases, { signal, onBatch } = {}) => {
       const operation = operationQueue.then(async () => {
-        throwIfAborted2(signal);
+        throwIfAborted3(signal);
         const uniquePhrases = [...new Set(phrases.filter((phrase) => isEligiblePhrase(
           phrase,
           maxPhraseCharacters
@@ -3511,7 +3546,7 @@
           for (const [phrase, translated] of translatedBatch) {
             translations.set(phrase, translated);
           }
-          throwIfAborted2(signal);
+          throwIfAborted3(signal);
           onBatch?.({ phrases: batch, translations: translatedBatch });
         }
         return translations;
@@ -3585,7 +3620,7 @@
       }
     }
     async function requestBatch(activeConfig, phrases, signal) {
-      throwIfAborted2(signal);
+      throwIfAborted3(signal);
       lastBatchStartedAt = now();
       const url = new URL("/ttranslatev3", activeConfig.origin);
       url.searchParams.set("isVertical", "1");
@@ -3822,7 +3857,7 @@
       this.status = status;
     }
   };
-  function throwIfAborted2(signal) {
+  function throwIfAborted3(signal) {
     if (signal?.aborted) {
       throw abortError2();
     }
@@ -4121,6 +4156,7 @@
       this.reprocessIterator = null;
       this.reprocessSeen = /* @__PURE__ */ new WeakSet();
       this.scanJobs = [];
+      this.renderJobs = /* @__PURE__ */ new Map();
       this.scanStyleCache = null;
       this.flushTimer = null;
       this.scanHandle = null;
@@ -4176,6 +4212,9 @@
     continuePending() {
       this.#scheduleNodeDrain();
     }
+    reprocess() {
+      this.#reprocessAll({ deferred: true });
+    }
     stop() {
       this.kanjiRuntime = null;
       this.katakanaRuntime = null;
@@ -4223,6 +4262,7 @@
       this.revalidationRequested = false;
       this.reprocessIterator = null;
       this.scanJobs.length = 0;
+      this.renderJobs.clear();
       for (const record of this.records) {
         this.#restoreRecord(record);
       }
@@ -4404,6 +4444,12 @@
       const startedAt = this.now();
       this.scanStyleCache = /* @__PURE__ */ new WeakMap();
       while (this.#hasRunnableWork(backgroundProcessed > 0) && processed < this.scanBatchSize && backgroundProcessed < 32 && (processed === 0 || this.now() - startedAt < this.scanBudgetMs) && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
+        const renderJob = this.renderJobs.values().next().value;
+        if (renderJob) {
+          this.#advanceRenderJob(renderJob);
+          processed += 1;
+          continue;
+        }
         const ready = this.viewport?.takeReady();
         if (ready) {
           this.#activateDeferred(ready);
@@ -4470,7 +4516,7 @@
       this.#scheduleNodeDrain();
     }
     #hasRunnableWork(continuingBackgroundBatch = false) {
-      return this.reprocessIterator || this.scanJobs.length > 0 || this.viewport?.hasReady || this.viewport?.hasDeferred && (continuingBackgroundBatch || !this.kanjiRuntime?.hasPendingWork?.() && !this.katakanaRuntime?.hasPendingWork?.());
+      return this.renderJobs.size > 0 || this.reprocessIterator || this.scanJobs.length > 0 || this.viewport?.hasReady || this.viewport?.hasDeferred && (continuingBackgroundBatch || !this.kanjiRuntime?.hasPendingWork?.() && !this.katakanaRuntime?.hasPendingWork?.());
     }
     #activateDeferred(record) {
       if (!this.#recordIsCurrent(record) || shouldSkipTextNode(record.currentNodes[0])) {
@@ -4503,6 +4549,7 @@
       this.#renderRecord(record, annotations);
     }
     #reprocessAll({ deferred = false } = {}) {
+      this.renderJobs.clear();
       if (this.hidden) {
         return;
       }
@@ -4530,42 +4577,80 @@
         range.romaji
       ]));
       if (record.planKey === planKey) {
+        this.renderJobs.delete(record);
         return;
       }
+      if (this.renderJobs.get(record)?.planKey === planKey) return;
       const parent = record.currentNodes[0]?.parentNode;
       if (!parent || record.currentNodes.some((node) => node.parentNode !== parent)) {
         this.#discardRecord(record);
         return;
       }
-      const fragment = this.document.createDocumentFragment();
-      let cursor = 0;
-      for (const range of annotations) {
-        if (range.start < cursor) {
-          continue;
-        }
-        if (range.start > cursor) {
-          fragment.append(this.document.createTextNode(record.originalText.slice(cursor, range.start)));
+      const job = {
+        record,
+        annotations,
+        planKey,
+        index: 0,
+        cursor: 0,
+        tail: null,
+        chunked: annotations.length > 128,
+        fragment: this.document.createDocumentFragment()
+      };
+      this.renderJobs.set(record, job);
+      if (job.chunked) {
+        this.#scheduleNodeDrain();
+        return;
+      }
+      while (this.renderJobs.get(record) === job) this.#advanceRenderJob(job);
+    }
+    #advanceRenderJob(job) {
+      const { record, annotations, fragment } = job;
+      if (job.index < annotations.length) {
+        const range = annotations[job.index++];
+        if (range.start < job.cursor) return;
+        if (range.start > job.cursor) {
+          fragment.append(this.document.createTextNode(record.originalText.slice(job.cursor, range.start)));
         }
         fragment.append(this.#createRuby(range));
-        cursor = range.end;
+        job.cursor = range.end;
+        if (job.chunked && job.index % 128 === 0) this.#commitRenderChunk(job, false);
+        return;
       }
-      if (cursor < record.originalText.length) {
-        fragment.append(this.document.createTextNode(record.originalText.slice(cursor)));
+      this.renderJobs.delete(record);
+      this.#commitRenderChunk(job, true);
+    }
+    #commitRenderChunk(job, complete) {
+      const { record, fragment } = job;
+      if (!this.#recordIsCurrent(record) || shouldSkipTextContainer(record.currentNodes[0]?.parentElement)) {
+        this.#discardRecord(record);
+        return;
       }
-      if (!fragment.childNodes.length) {
-        fragment.append(this.document.createTextNode(record.originalText));
-      }
+      const parent = record.currentNodes[0].parentNode;
       const nextNodes = [...fragment.childNodes];
+      const suffix = record.originalText.slice(job.cursor);
       this.scanStyleCache = /* @__PURE__ */ new WeakMap();
-      parent.insertBefore(fragment, record.currentNodes[0]);
-      for (const node of record.currentNodes) {
-        node.remove();
+      if (!job.tail) {
+        job.tail = this.document.createTextNode(suffix);
+        fragment.append(job.tail);
+        nextNodes.push(job.tail);
+        parent.insertBefore(fragment, record.currentNodes[0]);
+        for (const node of record.currentNodes) node.remove();
+        record.currentNodes = nextNodes;
+        record.sourceNodes = nextNodes.flatMap(sourceNodes);
+      } else {
+        parent.insertBefore(fragment, job.tail);
+        if (job.tail.data !== suffix) job.tail.data = suffix;
+        record.currentNodes.splice(record.currentNodes.length - 1, 0, ...nextNodes);
+        record.sourceNodes.splice(record.sourceNodes.length - 1, 0, ...nextNodes.flatMap(sourceNodes));
       }
-      record.currentNodes = nextNodes;
-      record.planKey = planKey;
-      for (const node of nextNodes) {
-        this.nodeRecords.set(node, record);
+      for (const node of nextNodes) this.nodeRecords.set(node, record);
+      if (complete && job.tail.data === "") {
+        job.tail.remove();
+        this.nodeRecords.delete(job.tail);
+        record.currentNodes.pop();
+        record.sourceNodes.pop();
       }
+      record.planKey = complete ? job.planKey : `partial:${job.planKey}`;
     }
     #createRuby(range) {
       const ruby = this.document.createElement("ruby");
@@ -4605,6 +4690,7 @@
       }
     }
     #discardRecord(record) {
+      this.renderJobs.delete(record);
       if (!this.records.has(record)) {
         return;
       }
@@ -4612,7 +4698,7 @@
       this.katakanaRuntime?.forget(record);
       this.viewport?.forget(record);
       const parent = record.currentNodes[0]?.parentNode;
-      if (parent && record.planKey !== "[]" && record.currentNodes.every((node) => node.parentNode === parent) && record.currentNodes.map(sourceText).join("") === record.originalText) {
+      if (parent && record.planKey !== "[]" && record.currentNodes.every((node) => node.parentNode === parent) && record.currentNodes.map(sourceText).join("") === record.originalText && sourceNodesAreUnchanged(record)) {
         const text = this.document.createTextNode(record.originalText);
         parent.insertBefore(text, record.currentNodes[0]);
         for (const node of record.currentNodes) {
@@ -4630,7 +4716,7 @@
     #unwrapOwnedRuby(record) {
       for (const node of record.currentNodes) {
         if (this.nodeRecords.get(node) !== record || !node.matches?.("ruby[data-yomi-ruby-generated]")) continue;
-        const base = node.querySelector(":scope > .yomi-ruby-base");
+        const base = ownedBase(node);
         if (base) node.replaceWith(...base.childNodes);
       }
     }
@@ -4657,7 +4743,7 @@
       }
       const parent = record.currentNodes[0].parentNode;
       return Boolean(
-        parent && record.currentNodes.every((node) => node.isConnected && node.parentNode === parent) && record.currentNodes.map(sourceText).join("") === record.originalText
+        parent && record.currentNodes.every((node) => node.isConnected && node.parentNode === parent) && record.currentNodes.map(sourceText).join("") === record.originalText && sourceNodesAreUnchanged(record)
       );
     }
     #cancelScheduledWork() {
@@ -4711,9 +4797,25 @@
       return node.textContent;
     }
     if (node.nodeType === 1 && node.hasAttribute("data-yomi-ruby-generated")) {
-      return node.querySelector(":scope > .yomi-ruby-base")?.textContent ?? "";
+      return ownedBase(node)?.textContent ?? "";
     }
     return node.textContent ?? "";
+  }
+  function sourceNodes(node) {
+    if (node.nodeType === 1 && node.hasAttribute("data-yomi-ruby-generated")) {
+      return [...ownedBase(node)?.childNodes ?? []];
+    }
+    return [node];
+  }
+  function sourceNodesAreUnchanged(record) {
+    if (!record.sourceNodes) return true;
+    const current = record.currentNodes.flatMap(sourceNodes);
+    return record.sourceNodes.length === current.length && record.sourceNodes.every((node, index) => node === current[index]);
+  }
+  function ownedBase(node) {
+    const first = node.firstElementChild;
+    if (first?.classList.contains("yomi-ruby-base")) return first;
+    return node.querySelector(":scope > .yomi-ruby-base");
   }
 
   // src/settings.js
@@ -5055,6 +5157,7 @@
       registerProvider();
       registerLanguage();
     };
+    const unsubscribeStates = controls.map((control) => control.subscribe());
     refreshMenus();
     if (localePersistenceError) {
       showStatus(localizer2.t("error.localePersistence", {
@@ -5140,6 +5243,7 @@
     }
     return {
       dispose() {
+        for (const unsubscribe of unsubscribeStates) unsubscribe?.();
         if (typeof removeValueChangeListener === "function") {
           for (const listenerId of listenerIds) {
             removeValueChangeListener(listenerId);
@@ -5185,12 +5289,18 @@
     let enabled = initialEnabled;
     let desiredEnabled = initialEnabled;
     let menuId = null;
+    let retryMenuId = null;
     let operation = 0;
     const register = () => {
       if (menuId != null) {
         unregisterMenuCommand(menuId);
       }
-      menuId = registerMenuCommand(localizer2.t(`menu.${enabled ? "disable" : "enable"}${menuKey}`), async () => {
+      if (retryMenuId != null) unregisterMenuCommand(retryMenuId);
+      retryMenuId = null;
+      const state = session.getState?.();
+      let label = localizer2.t(`menu.${enabled ? "disable" : "enable"}${menuKey}`);
+      if (enabled && state && state.phase !== "off") label += localizer2.t("menu.featureState", state);
+      menuId = registerMenuCommand(label, async () => {
         const requestedEnabled = !desiredEnabled;
         desiredEnabled = requestedEnabled;
         const requestOperation = ++operation;
@@ -5223,9 +5333,16 @@
           }
         }
       });
+      if (enabled && typeof session.retry === "function" && (state?.phase === "error" || state?.hasFailures)) {
+        const key = state.phase === "error" ? "retryStartup" : "retryFailures";
+        retryMenuId = registerMenuCommand(localizer2.t(`menu.${key}${menuKey}`), async () => {
+          if (enabled && desiredEnabled) await session.retry();
+        });
+      }
     };
     return {
       register,
+      subscribe: () => session.subscribe?.(refreshMenus),
       startIfEnabled() {
         if (enabled) {
           void session.enable();
@@ -5244,6 +5361,11 @@
       "menu.disableKatakana": "Disable Online Katakana English on this site",
       "menu.translationProvider": ({ provider, nextProvider }) => `Katakana Translator: ${providerName(provider)} (switch to ${providerName(nextProvider)})`,
       "menu.language": "语言 / Language: 切换到简体中文",
+      "menu.featureState": ({ phase, completed, total }) => phase === "loading" ? ` (loading${total ? ` ${completed}/${total} dictionaries` : ""}; click to cancel)` : phase === "error" ? " (startup failed)" : " (running)",
+      "menu.retryStartupKanji": "Retry Kanji Romaji startup",
+      "menu.retryStartupKatakana": "Retry Online Katakana English startup",
+      "menu.retryFailuresKanji": "Retry failed Kanji Romaji words",
+      "menu.retryFailuresKatakana": "Retry failed Katakana translations",
       "error.localePersistence": ({ error }) => `Could not save the language setting: ${error}`,
       "error.translationProviderPersistence": ({ error }) => `Could not save the translation provider: ${error}. The previous provider remains active.`,
       "error.translationProviderRead": ({ error }) => `Could not read the translation provider setting. This page is using the locale-derived default: ${error}`,
@@ -5266,6 +5388,11 @@
       "menu.disableKatakana": "关闭本网站联网片假名英文",
       "menu.translationProvider": ({ provider, nextProvider }) => `片假名翻译服务：${providerName(provider)}（切换到 ${providerName(nextProvider)}）`,
       "menu.language": "语言 / Language: Switch to English",
+      "menu.featureState": ({ phase, completed, total }) => phase === "loading" ? `（加载中${total ? `，词典 ${completed}/${total}` : ""}，点击取消）` : phase === "error" ? "（启动失败）" : "（运行中）",
+      "menu.retryStartupKanji": "重试启动汉字罗马音",
+      "menu.retryStartupKatakana": "重试启动联网片假名英文",
+      "menu.retryFailuresKanji": "重试失败的汉字读音",
+      "menu.retryFailuresKatakana": "重试失败的片假名翻译",
       "error.localePersistence": ({ error }) => `无法保存语言设置：${error}`,
       "error.translationProviderPersistence": ({ error }) => `无法保存片假名翻译服务设置：${error}。继续使用原服务。`,
       "error.translationProviderRead": ({ error }) => `无法读取片假名翻译服务设置，本页使用语言对应的默认服务：${error}`,
@@ -5555,7 +5682,7 @@
     let hasRequested = false;
     const romanizeWords = (words, { signal, onBatch } = {}) => {
       const operation = operationQueue.then(async () => {
-        throwIfAborted3(signal);
+        throwIfAborted4(signal);
         const uniqueWords = [...new Set(words.filter((word) => isEligibleWord2(
           word,
           maxWordCharacters
@@ -5566,7 +5693,7 @@
             if (hasRequested && minimumIntervalMs > 0) {
               await sleep(minimumIntervalMs, { signal });
             }
-            throwIfAborted3(signal);
+            throwIfAborted4(signal);
             hasRequested = true;
             const response = await request3(gmRequest, {
               method: "GET",
@@ -5601,7 +5728,7 @@
               for (const [word, romaji] of batchReadings) {
                 readings.set(word, romaji);
               }
-              throwIfAborted3(signal);
+              throwIfAborted4(signal);
               onBatch?.({ words: batch.words, readings: batchReadings });
             } else {
               for (const word of batch.words) {
@@ -5610,7 +5737,7 @@
                 if (romaji) {
                   readings.set(word, romaji);
                 }
-                throwIfAborted3(signal);
+                throwIfAborted4(signal);
                 onBatch?.({ words: [word], readings: new Map(romaji ? [[word, romaji]] : []) });
               }
             }
@@ -5800,7 +5927,7 @@
       });
     });
   }
-  function throwIfAborted3(signal) {
+  function throwIfAborted4(signal) {
     if (signal?.aborted) {
       throw abortError4();
     }
@@ -5846,6 +5973,17 @@
     const progressListeners = /* @__PURE__ */ new Set();
     const analyze = async (text, options) => (await analyzeBatch([text], options))[0];
     analyze.analyzeBatch = analyzeBatch;
+    analyze.hasFailures = () => [...readingCache.values()].some((reading) => reading === null);
+    analyze.retryFailures = () => {
+      let removed = 0;
+      for (const [word, reading] of readingCache) {
+        if (reading === null) {
+          readingCache.delete(word);
+          removed += 1;
+        }
+      }
+      return removed;
+    };
     return analyze;
     async function analyzeBatch(texts, { signal, onProgress } = {}) {
       const prepared = texts.map(prepareText);
@@ -6037,7 +6175,7 @@
       this.processing = false;
       this.flushScheduled = false;
     }
-    async enable() {
+    async enable({ onProgress } = {}) {
       if (this.active) {
         return;
       }
@@ -6045,7 +6183,7 @@
       const abortController = new AbortController();
       this.abortController = abortController;
       this.#clearCycle();
-      const analyzer = await this.analyzerFactories[this.mode]({ signal: abortController.signal });
+      const analyzer = await this.analyzerFactories[this.mode]({ signal: abortController.signal, onProgress });
       if (generation !== this.generation || abortController.signal.aborted) {
         return;
       }
@@ -6124,6 +6262,18 @@
     }
     hasPendingWork() {
       return this.processing || this.flushScheduled || this.queue.length > 0;
+    }
+    hasFailures() {
+      return Boolean(this.active && this.analyzer?.hasFailures?.());
+    }
+    retryFailures() {
+      if (!this.active || this.hasPendingWork() || !this.analyzer?.retryFailures?.()) return false;
+      for (const entry of this.cache.values()) {
+        if (entry.owners === 0) continue;
+        entry.status = "pending";
+        this.queue.push(entry.text);
+      }
+      return true;
     }
     #drain() {
       if (!this.active || this.paused || this.processing || this.queue.length === 0) {
@@ -6401,6 +6551,20 @@
     hasPendingWork() {
       return this.processing || this.flushScheduled || this.queue.length > 0;
     }
+    hasFailures() {
+      return this.active && [...this.cache.values()].some((entry) => entry.status === "failure");
+    }
+    retryFailures() {
+      if (!this.active || this.hasPendingWork()) return false;
+      let removed = false;
+      for (const [phrase, entry] of this.cache) {
+        if (entry.status === "failure") {
+          this.cache.delete(phrase);
+          removed = true;
+        }
+      }
+      return removed;
+    }
     stop() {
       this.disable();
     }
@@ -6568,119 +6732,161 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
       mode: kanjiMode,
       analyzerFactories: kanjiAnalyzerFactories,
       onPlanChanged: (record) => coordinator2.refresh(record),
-      onIdle: () => coordinator2.continuePending()
+      onIdle: () => {
+        coordinator2.continuePending();
+        notify("kanji");
+      }
     });
     const katakanaRuntime = new KatakanaRuntime({
       provider: translationProvider,
       translatorFactories: resolvedTranslationFactories,
       onPlanChanged: (record) => coordinator2.refresh(record),
-      onIdle: () => coordinator2.continuePending()
+      onIdle: () => {
+        coordinator2.continuePending();
+        notify("katakana");
+      }
     });
     let kanjiActive = false;
     let kanjiDesired = false;
+    let kanjiOperation = 0;
     let katakanaActive = false;
+    let katakanaDesired = false;
+    let katakanaOperation = 0;
     let removeStyles = null;
     let statusElement = null;
     let statusTimer = null;
+    const states = { kanji: { phase: "off" }, katakana: { phase: "off" } };
+    const listeners = { kanji: /* @__PURE__ */ new Set(), katakana: /* @__PURE__ */ new Set() };
+    function getState(feature) {
+      const runtime = feature === "kanji" ? kanjiRuntime : katakanaRuntime;
+      return { ...states[feature], hasFailures: runtime.hasFailures() };
+    }
+    function notify(feature) {
+      for (const listener of listeners[feature]) listener(getState(feature));
+    }
+    function setState(feature, phase, progress = {}) {
+      states[feature] = { phase, ...progress };
+      notify(feature);
+    }
+    function subscribe(feature, listener) {
+      listeners[feature].add(listener);
+      return () => listeners[feature].delete(listener);
+    }
     const kanji = {
+      getState: () => getState("kanji"),
+      subscribe: (listener) => subscribe("kanji", listener),
       async enable() {
-        if (kanjiActive) {
-          return;
-        }
+        if (kanjiActive || kanjiDesired) return;
+        const operation = ++kanjiOperation;
         kanjiDesired = true;
+        setState("kanji", "loading");
         ensureStyles();
         try {
-          await kanjiRuntime.enable();
-          if (!kanjiDesired || !kanjiRuntime.active) {
-            return;
-          }
+          await kanjiRuntime.enable({ onProgress: (progress) => {
+            if (operation === kanjiOperation) setState("kanji", "loading", progress);
+          } });
+          if (operation !== kanjiOperation || !kanjiDesired || !kanjiRuntime.active) return;
           coordinator2.enableKanji(kanjiRuntime);
           kanjiActive = true;
+          setState("kanji", "running");
         } catch (error) {
+          if (operation !== kanjiOperation) return;
           kanjiDesired = false;
           kanjiRuntime.disable();
           coordinator2.disableKanji();
+          setState("kanji", "error");
           showStartupError("kanji", error);
         } finally {
           removeStylesIfUnused();
         }
       },
       disable() {
+        kanjiOperation += 1;
         kanjiDesired = false;
         kanjiActive = false;
         coordinator2.disableKanji();
         kanjiRuntime.disable();
+        setState("kanji", "off");
         removeStatus();
         removeStylesIfUnused();
       },
       async setMode(mode) {
-        if (!kanjiActive) {
+        if (mode === kanjiRuntime.mode) return;
+        const restart = kanjiDesired || states.kanji.phase === "error";
+        if (!restart) {
           await kanjiRuntime.setMode(mode);
           return;
         }
-        coordinator2.disableKanji();
-        kanjiActive = false;
-        try {
-          await kanjiRuntime.setMode(mode);
-          if (kanjiRuntime.active && kanjiDesired) {
-            coordinator2.enableKanji(kanjiRuntime);
-            kanjiActive = true;
-          }
-        } catch (error) {
-          kanjiDesired = false;
-          kanjiRuntime.disable();
-          showStartupError("kanji", error);
-        } finally {
-          removeStylesIfUnused();
+        kanji.disable();
+        const operation = kanjiOperation;
+        await kanjiRuntime.setMode(mode);
+        if (restart && operation === kanjiOperation) await kanji.enable();
+      },
+      async retry() {
+        if (states.kanji.phase === "error") {
+          removeStatus();
+          await kanji.enable();
+        } else if (kanjiRuntime.retryFailures()) {
+          coordinator2.reprocess();
+          notify("kanji");
         }
       }
     };
     const katakana = {
+      getState: () => getState("katakana"),
+      subscribe: (listener) => subscribe("katakana", listener),
       async enable() {
-        if (katakanaActive) {
-          return;
-        }
+        if (katakanaActive || katakanaDesired) return;
+        const operation = ++katakanaOperation;
+        katakanaDesired = true;
+        setState("katakana", "loading");
         ensureStyles();
         try {
           await katakanaRuntime.enable();
-          if (!katakanaRuntime.active) {
-            return;
-          }
+          if (operation !== katakanaOperation || !katakanaDesired || !katakanaRuntime.active) return;
           coordinator2.enableKatakana(katakanaRuntime);
           katakanaActive = true;
+          setState("katakana", "running");
         } catch (error) {
+          if (operation !== katakanaOperation) return;
+          katakanaDesired = false;
           katakanaRuntime.disable();
           coordinator2.disableKatakana();
+          setState("katakana", "error");
           showStartupError("katakana", error);
         } finally {
           removeStylesIfUnused();
         }
       },
       disable() {
+        katakanaOperation += 1;
+        katakanaDesired = false;
         katakanaActive = false;
         coordinator2.disableKatakana();
         katakanaRuntime.disable();
+        setState("katakana", "off");
         removeStatus();
         removeStylesIfUnused();
       },
       async setProvider(provider) {
-        if (!katakanaActive) {
+        if (provider === katakanaRuntime.provider) return;
+        const restart = katakanaDesired || states.katakana.phase === "error";
+        if (!restart) {
           await katakanaRuntime.setProvider(provider);
           return;
         }
-        coordinator2.disableKatakana();
-        katakanaActive = false;
-        try {
-          await katakanaRuntime.setProvider(provider);
-          if (katakanaRuntime.active) {
-            coordinator2.enableKatakana(katakanaRuntime);
-            katakanaActive = true;
-          }
-        } catch (error) {
-          katakanaRuntime.disable();
-          showStartupError("katakana", error);
-        } finally {
-          removeStylesIfUnused();
+        katakana.disable();
+        const operation = katakanaOperation;
+        await katakanaRuntime.setProvider(provider);
+        if (restart && operation === katakanaOperation) await katakana.enable();
+      },
+      async retry() {
+        if (states.katakana.phase === "error") {
+          removeStatus();
+          await katakana.enable();
+        } else if (katakanaRuntime.retryFailures()) {
+          coordinator2.reprocess();
+          notify("katakana");
         }
       }
     };
@@ -6717,18 +6923,23 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
       removeStylesIfUnused();
     }
     function removeStylesIfUnused() {
-      if (!kanjiActive && !kanjiDesired && !katakanaActive && !statusElement) {
+      if (!kanjiActive && !kanjiDesired && !katakanaActive && !katakanaDesired && !statusElement) {
         removeStyles?.();
         removeStyles = null;
       }
     }
     function stop() {
+      kanjiOperation += 1;
+      katakanaOperation += 1;
+      katakanaDesired = false;
       kanjiDesired = false;
       kanjiActive = false;
       katakanaActive = false;
       kanjiRuntime.stop();
       katakanaRuntime.stop();
       coordinator2.stop();
+      setState("kanji", "off");
+      setState("katakana", "off");
       removeStatus();
       removeStyles?.();
       removeStyles = null;
@@ -6747,14 +6958,14 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
     return createTokenizer((name) => decompress(dictionaryFiles, name));
   }
   async function buildStaticTokenizerAsync(dictionaryFiles, { signal } = {}) {
-    throwIfAborted4(signal);
+    throwIfAborted5(signal);
     if (typeof globalThis.DecompressionStream !== "function") {
       return buildStaticTokenizer(dictionaryFiles);
     }
     const decoded = /* @__PURE__ */ new Map();
     try {
       for (const [name, compressed] of dictionaryFiles) {
-        throwIfAborted4(signal);
+        throwIfAborted5(signal);
         if (!(compressed instanceof ArrayBuffer)) {
           throw new Error(`Verified dictionary asset not found: ${name}`);
         }
@@ -6764,7 +6975,7 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
         );
         decoded.set(name, await new Response(stream).arrayBuffer());
       }
-      throwIfAborted4(signal);
+      throwIfAborted5(signal);
       return createTokenizer((name) => {
         const bytes = decoded.get(name);
         if (!(bytes instanceof ArrayBuffer)) {
@@ -6773,7 +6984,7 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
         return bytes;
       });
     } catch (error) {
-      throwIfAborted4(signal);
+      throwIfAborted5(signal);
       throw error;
     } finally {
       decoded.clear();
@@ -6810,150 +7021,225 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
     const bytes = gunzip.decompress();
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   }
-  function throwIfAborted4(signal) {
+  function throwIfAborted5(signal) {
     if (signal?.aborted) {
       throw new Error("Dictionary initialization aborted.");
     }
   }
 
-  // src/vendor-loader.js
-  async function loadVerifiedKuromoji({
+  // src/lazy-dictionary-loader.js
+  var BASE_URL = "https://unpkg.com/kuromoji@0.1.2/dict/";
+  var CACHE_PREFIX = "yomi-ruby:dictionary-cache:kuromoji@0.1.2:";
+  var DICTIONARY_NAMES = /* @__PURE__ */ new Set([
+    "base.dat.gz",
+    "check.dat.gz",
+    "cc.dat.gz",
+    "tid.dat.gz",
+    "tid_pos.dat.gz",
+    "tid_map.dat.gz",
+    "unk.dat.gz",
+    "unk_pos.dat.gz",
+    "unk_map.dat.gz",
+    "unk_char.dat.gz",
+    "unk_compat.dat.gz",
+    "unk_invoke.dat.gz"
+  ]);
+  async function loadLazyVerifiedKuromoji({
     manifest,
-    getResourceUrl,
     gmRequest,
+    getValue,
+    setValue,
     subtle = globalThis.crypto?.subtle,
-    signal
+    signal,
+    onProgress = () => {
+    }
   }) {
-    if (!Array.isArray(manifest?.dictionary)) {
-      throw new TypeError("A valid vendor manifest is required.");
+    throwIfAborted6(signal);
+    if (!Array.isArray(manifest?.dictionary) || manifest.dictionary.length !== DICTIONARY_NAMES.size || new Set(manifest.dictionary.map((asset) => asset?.name)).size !== DICTIONARY_NAMES.size) {
+      throw new Error("The complete approved kuromoji@0.1.2 dictionary manifest is required.");
     }
-    if (typeof gmRequest !== "function") {
-      throw new TypeError("GM_xmlhttpRequest is required for verified asset loading.");
-    }
-    if (!subtle) {
-      throw new Error("Web Crypto SHA-256 is unavailable; refusing to load dictionary assets.");
-    }
-    throwIfAborted5(signal);
-    const dictionaryEntries = await Promise.all(
-      manifest.dictionary.map(async (asset) => [
-        asset.name,
-        await readAndVerifyResource(asset, getResourceUrl, gmRequest, subtle, signal)
-      ])
-    );
-    const dictionaryFiles = new Map(dictionaryEntries);
+    for (const asset of manifest.dictionary) validateAsset(asset);
+    const dictionaryFiles = /* @__PURE__ */ new Map();
+    onProgress({ completed: 0, total: manifest.dictionary.length });
     try {
-      throwIfAborted5(signal);
+      for (const asset of manifest.dictionary) {
+        const bytes = await readAndVerifyDictionary({ asset, gmRequest, getValue, setValue, subtle, signal });
+        dictionaryFiles.set(asset.name, bytes);
+        onProgress({ completed: dictionaryFiles.size, total: manifest.dictionary.length });
+      }
+      throwIfAborted6(signal);
       const tokenizer = await buildStaticTokenizerAsync(dictionaryFiles, { signal });
-      throwIfAborted5(signal);
+      throwIfAborted6(signal);
       return tokenizer;
+    } catch (error) {
+      throwIfAborted6(signal);
+      throw error;
     } finally {
       dictionaryFiles.clear();
     }
   }
-  async function readAndVerifyResource(asset, getResourceUrl, gmRequest, subtle = globalThis.crypto?.subtle, signal) {
-    throwIfAborted5(signal);
-    validateAssetRecord(asset);
-    if (!asset.resourceName || typeof asset.resourceName !== "string") {
-      throw new Error(`Missing preloaded resource name for ${asset.name}`);
+  async function readAndVerifyDictionary({
+    asset,
+    gmRequest,
+    getValue,
+    setValue,
+    subtle = globalThis.crypto?.subtle,
+    signal
+  }) {
+    validateAsset(asset);
+    if (!subtle || typeof subtle.digest !== "function") {
+      throw new Error("Web Crypto SHA-256 is unavailable; refusing to load dictionary assets.");
     }
-    if (typeof getResourceUrl !== "function") {
-      throw new TypeError("GM_getResourceURL is required for preloaded dictionary access.");
+    if (typeof gmRequest !== "function" || typeof getValue !== "function" || typeof setValue !== "function") {
+      throw new TypeError("Dictionary requests and cache storage adapters are required.");
     }
-    const resourceUrl = getResourceUrl(asset.resourceName);
-    validateLocalResourceUrl(resourceUrl, asset.resourceName);
-    const bytes = await gmArrayBufferRequest(resourceUrl, gmRequest, signal);
-    return verifyAssetBytes(asset, bytes, subtle, signal);
+    throwIfAborted6(signal);
+    const key = CACHE_PREFIX + asset.name;
+    const cached = await abortable(getValue(key, null), signal);
+    throwIfAborted6(signal);
+    let canPersist = true;
+    if (cached != null) {
+      try {
+        return await verifyBytes(asset, decodeCache(asset, cached), subtle, signal);
+      } catch (error) {
+        throwIfAborted6(signal);
+        if (!(error instanceof IntegrityError) && !(error instanceof CacheError)) throw error;
+        canPersist = await writeCache(key, null, setValue, signal);
+        throwIfAborted6(signal);
+      }
+    }
+    const bytes = await requestDictionary(asset.url, gmRequest, signal);
+    await verifyBytes(asset, bytes, subtle, signal);
+    if (canPersist) {
+      await writeCache(key, { sha256: asset.sha256, base64: encodeBase64(bytes) }, setValue, signal);
+    }
+    throwIfAborted6(signal);
+    return bytes;
   }
-  async function verifyAssetBytes(asset, bytes, subtle, signal) {
-    throwIfAborted5(signal);
-    if (bytes.byteLength !== asset.size) {
-      throw new Error(`Size mismatch for ${asset.name}: expected ${asset.size}, received ${bytes.byteLength}`);
+  function validateAsset(asset) {
+    if (!asset || !DICTIONARY_NAMES.has(asset.name) || asset.url !== BASE_URL + asset.name || !Number.isSafeInteger(asset.size) || asset.size <= 0 || typeof asset.sha256 !== "string" || !/^[0-9a-f]{64}$/u.test(asset.sha256)) {
+      throw new Error("An approved kuromoji@0.1.2 dictionary manifest entry is required.");
     }
-    const digest = toHex(await subtle.digest("SHA-256", bytes));
-    throwIfAborted5(signal);
+  }
+  async function verifyBytes(asset, bytes, subtle, signal) {
+    throwIfAborted6(signal);
+    if (bytes.byteLength !== asset.size) {
+      throw new IntegrityError(`Size mismatch for ${asset.name}.`);
+    }
+    const digest = [...new Uint8Array(await abortable(subtle.digest("SHA-256", bytes), signal))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    throwIfAborted6(signal);
     if (digest !== asset.sha256) {
-      throw new Error(`SHA-256 mismatch for ${asset.name}: expected ${asset.sha256}, received ${digest}`);
+      throw new IntegrityError(`SHA-256 mismatch for ${asset.name}.`);
     }
     return bytes;
   }
-  function validateLocalResourceUrl(resourceUrl, resourceName) {
-    if (typeof resourceUrl !== "string" || resourceUrl.length === 0) {
-      throw new Error(`Preloaded resource unavailable: ${resourceName}`);
-    }
-    let protocol;
-    try {
-      protocol = new URL(resourceUrl).protocol;
-    } catch {
-      throw new Error(`Invalid preloaded resource URL for ${resourceName}`);
-    }
-    if (!["blob:", "data:", "chrome-extension:", "moz-extension:"].includes(protocol)) {
-      throw new Error(`Refusing non-local preloaded resource URL for ${resourceName}`);
-    }
-  }
-  function validateAssetRecord(asset) {
-    if (!asset.name || !Number.isSafeInteger(asset.size) || asset.size < 0 || !/^[0-9a-f]{64}$/u.test(asset.sha256)) {
-      throw new Error(`Invalid manifest entry for ${asset?.name ?? "unnamed asset"}`);
-    }
-  }
-  function gmArrayBufferRequest(url, gmRequest, signal) {
+  function requestDictionary(url, gmRequest, signal) {
     return new Promise((resolve, reject) => {
       let settled = false;
-      let requestHandle;
+      let handle;
       const finish = (callback, value) => {
-        if (settled) {
-          return;
-        }
+        if (settled) return;
         settled = true;
-        signal?.removeEventListener("abort", onSignalAbort);
+        signal?.removeEventListener("abort", onAbort);
         callback(value);
       };
-      const rejectAbort = () => finish(reject, new Error(`Asset request aborted for ${url}`));
-      const onSignalAbort = () => {
+      const onAbort = () => {
         try {
-          requestHandle?.abort?.();
+          handle?.abort?.();
         } finally {
-          rejectAbort();
+          finish(reject, abortError5());
         }
       };
       if (signal?.aborted) {
-        rejectAbort();
+        finish(reject, abortError5());
         return;
       }
-      signal?.addEventListener("abort", onSignalAbort, { once: true });
+      signal?.addEventListener("abort", onAbort, { once: true });
       try {
-        requestHandle = gmRequest({
+        handle = gmRequest({
           method: "GET",
           url,
           responseType: "arraybuffer",
           timeout: 12e4,
           anonymous: true,
+          redirect: "error",
           onload(response) {
-            const localSuccess = response.status === 0 || response.status >= 200 && response.status < 300;
-            if (!localSuccess || !(response.response instanceof ArrayBuffer)) {
-              finish(reject, new Error(`Asset request failed for ${url}: HTTP ${response.status}`));
-              return;
+            if (!Number.isInteger(response?.status) || response.status < 200 || response.status >= 300) {
+              finish(reject, new Error("Dictionary request returned an invalid HTTP status."));
+            } else if ((response.finalUrl ?? response.responseURL) !== url) {
+              finish(reject, new Error("Dictionary request returned a missing or changed final URL."));
+            } else if (!(response.response instanceof ArrayBuffer)) {
+              finish(reject, new Error("Dictionary request did not return an ArrayBuffer."));
+            } else {
+              finish(resolve, response.response);
             }
-            finish(resolve, response.response);
           },
-          onerror: () => finish(reject, new Error(`Network error while requesting ${url}`)),
-          ontimeout: () => finish(reject, new Error(`Timed out while requesting ${url}`)),
-          onabort: rejectAbort
+          onerror: () => finish(reject, new Error("Dictionary request failed.")),
+          ontimeout: () => finish(reject, new Error("Dictionary request timed out.")),
+          onabort: () => finish(reject, abortError5())
         });
-        if (signal?.aborted) {
-          onSignalAbort();
-        }
+        if (signal?.aborted) onAbort();
       } catch (error) {
         finish(reject, error);
       }
     });
   }
-  function throwIfAborted5(signal) {
-    if (signal?.aborted) {
-      throw new Error("Asset loading aborted.");
+  function encodeBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const chunks = [];
+    for (let offset = 0; offset < bytes.length; offset += 32768) {
+      chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 32768)));
+    }
+    return btoa(chunks.join(""));
+  }
+  function decodeCache(asset, cached) {
+    if (typeof cached !== "object" || Array.isArray(cached) || Object.keys(cached).sort().join(",") !== "base64,sha256" || cached.sha256 !== asset.sha256 || typeof cached.base64 !== "string" || cached.base64.length !== 4 * Math.ceil(asset.size / 3) || !/^[A-Za-z0-9+/]*={0,2}$/u.test(cached.base64)) {
+      throw new CacheError(`Invalid dictionary cache for ${asset.name}.`);
+    }
+    try {
+      const binary = atob(cached.base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+      return bytes.buffer;
+    } catch {
+      throw new CacheError(`Invalid dictionary cache for ${asset.name}.`);
     }
   }
-  function toHex(buffer) {
-    return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  var IntegrityError = class extends Error {
+  };
+  var CacheError = class extends Error {
+  };
+  async function writeCache(key, value, setValue, signal) {
+    throwIfAborted6(signal);
+    try {
+      await abortable(setValue(key, value), signal);
+      return true;
+    } catch {
+      throwIfAborted6(signal);
+      return false;
+    }
+  }
+  function throwIfAborted6(signal) {
+    if (signal?.aborted) throw abortError5();
+  }
+  function abortError5() {
+    return new DOMException("Dictionary loading aborted.", "AbortError");
+  }
+  function abortable(operation, signal) {
+    if (!signal) return Promise.resolve(operation);
+    return new Promise((resolve, reject) => {
+      const finish = (callback, value) => {
+        signal.removeEventListener("abort", onAbort);
+        callback(value);
+      };
+      const onAbort = () => finish(reject, abortError5());
+      signal.addEventListener("abort", onAbort, { once: true });
+      Promise.resolve(operation).then(
+        (result) => finish(resolve, result),
+        (error) => finish(reject, error)
+      );
+      if (signal.aborted) onAbort();
+    });
   }
 
   // src/main.js
@@ -6995,11 +7281,13 @@ ruby.yomi-ruby-ruby[data-yomi-ruby-kana]:focus-visible::after {
       }).translatePhrases
     };
     const kanjiAnalyzerFactories = {
-      local: async ({ signal }) => createAnalyzer(await loadVerifiedKuromoji({
+      local: async ({ signal, onProgress }) => createCooperativeAnalyzer(await loadLazyVerifiedKuromoji({
         manifest: runtime_manifest_default,
-        getResourceUrl: GM_getResourceURL,
         gmRequest: GM_xmlhttpRequest,
-        signal
+        getValue: GM_getValue,
+        setValue: GM_setValue,
+        signal,
+        onProgress
       })),
       google: async () => createOnlineKanjiAnalyzer({
         romanizeWords: createGoogleKanjiRomajiClient({

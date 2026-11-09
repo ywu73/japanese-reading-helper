@@ -17,6 +17,17 @@ export function createOnlineKanjiAnalyzer({
 
   const analyze = async (text, options) => (await analyzeBatch([text], options))[0];
   analyze.analyzeBatch = analyzeBatch;
+  analyze.hasFailures = () => [...readingCache.values()].some((reading) => reading === null);
+  analyze.retryFailures = () => {
+    let removed = 0;
+    for (const [word, reading] of readingCache) {
+      if (reading === null) {
+        readingCache.delete(word);
+        removed += 1;
+      }
+    }
+    return removed;
+  };
   return analyze;
 
   async function analyzeBatch(texts, { signal, onProgress } = {}) {

@@ -209,6 +209,7 @@ export async function installYomiRubyControls({
     registerProvider();
     registerLanguage();
   };
+  const unsubscribeStates = controls.map((control) => control.subscribe());
   refreshMenus();
   if (localePersistenceError) {
     showStatus(localizer.t("error.localePersistence", {
@@ -295,6 +296,7 @@ export async function installYomiRubyControls({
   }
   return {
     dispose() {
+      for (const unsubscribe of unsubscribeStates) unsubscribe?.();
       if (typeof removeValueChangeListener === "function") {
         for (const listenerId of listenerIds) {
           removeValueChangeListener(listenerId);
@@ -346,13 +348,19 @@ function createFeatureControl({
   let enabled = initialEnabled;
   let desiredEnabled = initialEnabled;
   let menuId = null;
+  let retryMenuId = null;
   let operation = 0;
 
   const register = () => {
     if (menuId != null) {
       unregisterMenuCommand(menuId);
     }
-    menuId = registerMenuCommand(localizer.t(`menu.${enabled ? "disable" : "enable"}${menuKey}`), async () => {
+    if (retryMenuId != null) unregisterMenuCommand(retryMenuId);
+    retryMenuId = null;
+    const state = session.getState?.();
+    let label = localizer.t(`menu.${enabled ? "disable" : "enable"}${menuKey}`);
+    if (enabled && state && state.phase !== "off") label += localizer.t("menu.featureState", state);
+    menuId = registerMenuCommand(label, async () => {
       const requestedEnabled = !desiredEnabled;
       desiredEnabled = requestedEnabled;
       const requestOperation = ++operation;
@@ -387,10 +395,17 @@ function createFeatureControl({
         }
       }
     });
+    if (enabled && typeof session.retry === "function" && (state?.phase === "error" || state?.hasFailures)) {
+      const key = state.phase === "error" ? "retryStartup" : "retryFailures";
+      retryMenuId = registerMenuCommand(localizer.t(`menu.${key}${menuKey}`), async () => {
+        if (enabled && desiredEnabled) await session.retry();
+      });
+    }
   };
 
   return {
     register,
+    subscribe: () => session.subscribe?.(refreshMenus),
     startIfEnabled() {
       if (enabled) {
         void session.enable();

@@ -201,6 +201,34 @@ for (const beforeObserver of [false, true]) {
       assert.equal(p.querySelectorAll("[data-yomi-ruby-generated]").length, 0);
     } finally { coordinator.stop(); dom.window.close(); }
   });
+
+  test(`stop preserves same-text page markup and listeners ${beforeObserver ? "before" : "after"} mutation delivery`, async () => {
+    const dom = new JSDOM("<p>日本語です</p>");
+    const coordinator = immediateCoordinator(dom);
+    const { document } = dom.window;
+    const p = document.querySelector("p");
+    coordinator.enableKanji(runtimePlan(() => ({ ranges: [
+      { start: 0, end: 3, text: "日本語", reading: "ニホンゴ", romaji: "nihongo" },
+    ] })));
+    try {
+      await waitFor(() => p.querySelector("ruby"));
+      const span = document.createElement("span");
+      span.className = "page-added";
+      span.textContent = "日本語";
+      let clicks = 0;
+      span.addEventListener("click", () => { clicks += 1; });
+      p.querySelector(".yomi-ruby-base").replaceChildren(span);
+      if (!beforeObserver) await tick();
+
+      coordinator.stop();
+
+      assert.equal(p.innerHTML, '<span class="page-added">日本語</span>です');
+      assert.equal(p.firstChild, span);
+      span.click();
+      assert.equal(clicks, 1);
+      assert.equal(p.querySelectorAll("ruby, rt, [data-yomi-ruby-generated], .yomi-ruby-base").length, 0);
+    } finally { coordinator.stop(); dom.window.close(); }
+  });
 }
 
 test("discarded ownership preserves page-added markup and the current base children", async () => {

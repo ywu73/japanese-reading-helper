@@ -9,6 +9,13 @@ const MESSAGES = Object.freeze({
     "menu.disableKatakana": "Disable Online Katakana English on this site",
     "menu.translationProvider": ({ provider, nextProvider }) => `Katakana Translator: ${providerName(provider)} (switch to ${providerName(nextProvider)})`,
     "menu.language": "语言 / Language: 切换到简体中文",
+    "menu.featureState": ({ phase, completed, total }) => phase === "loading"
+      ? ` (loading${total ? ` ${completed}/${total} dictionaries` : ""}; click to cancel)`
+      : phase === "error" ? " (startup failed)" : " (running)",
+    "menu.retryStartupKanji": "Retry Kanji Romaji startup",
+    "menu.retryStartupKatakana": "Retry Online Katakana English startup",
+    "menu.retryFailuresKanji": "Retry failed Kanji Romaji words",
+    "menu.retryFailuresKatakana": "Retry failed Katakana translations",
     "error.localePersistence": ({ error }) => `Could not save the language setting: ${error}`,
     "error.translationProviderPersistence": ({ error }) => `Could not save the translation provider: ${error}. The previous provider remains active.`,
     "error.translationProviderRead": ({ error }) => `Could not read the translation provider setting. This page is using the locale-derived default: ${error}`,
@@ -31,6 +38,13 @@ const MESSAGES = Object.freeze({
     "menu.disableKatakana": "关闭本网站联网片假名英文",
     "menu.translationProvider": ({ provider, nextProvider }) => `片假名翻译服务：${providerName(provider)}（切换到 ${providerName(nextProvider)}）`,
     "menu.language": "语言 / Language: Switch to English",
+    "menu.featureState": ({ phase, completed, total }) => phase === "loading"
+      ? `（加载中${total ? `，词典 ${completed}/${total}` : ""}，点击取消）`
+      : phase === "error" ? "（启动失败）" : "（运行中）",
+    "menu.retryStartupKanji": "重试启动汉字罗马音",
+    "menu.retryStartupKatakana": "重试启动联网片假名英文",
+    "menu.retryFailuresKanji": "重试失败的汉字读音",
+    "menu.retryFailuresKatakana": "重试失败的片假名翻译",
     "error.localePersistence": ({ error }) => `无法保存语言设置：${error}`,
     "error.translationProviderPersistence": ({ error }) => `无法保存片假名翻译服务设置：${error}。继续使用原服务。`,
     "error.translationProviderRead": ({ error }) => `无法读取片假名翻译服务设置，本页使用语言对应的默认服务：${error}`,

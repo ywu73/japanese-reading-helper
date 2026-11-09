@@ -23,7 +23,7 @@ export class KanjiRuntime {
     this.flushScheduled = false;
   }
 
-  async enable() {
+  async enable({ onProgress } = {}) {
     if (this.active) {
       return;
     }
@@ -31,7 +31,7 @@ export class KanjiRuntime {
     const abortController = new AbortController();
     this.abortController = abortController;
     this.#clearCycle();
-    const analyzer = await this.analyzerFactories[this.mode]({ signal: abortController.signal });
+    const analyzer = await this.analyzerFactories[this.mode]({ signal: abortController.signal, onProgress });
     if (generation !== this.generation || abortController.signal.aborted) {
       return;
     }
@@ -118,6 +118,22 @@ export class KanjiRuntime {
 
   hasPendingWork() {
     return this.processing || this.flushScheduled || this.queue.length > 0;
+  }
+
+  hasFailures() {
+    return Boolean(this.active && this.analyzer?.hasFailures?.());
+  }
+
+  retryFailures() {
+    if (!this.active || this.hasPendingWork() || !this.analyzer?.retryFailures?.()) return false;
+    for (const entry of this.cache.values()) {
+      if (entry.owners === 0) continue;
+      // Re-plan partial successes too. The adapter retains successful words,
+      // and existing ranges stay visible while only missing words are fetched.
+      entry.status = "pending";
+      this.queue.push(entry.text);
+    }
+    return true;
   }
 
   #drain() {

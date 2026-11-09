@@ -26,7 +26,7 @@ assert.notEqual(metadataEnd, -1, "Userscript metadata block is incomplete.");
 const metadata = source.slice(0, metadataEnd);
 const runtime = source.slice(metadataEnd);
 
-assert.equal(packageJson.version, "0.6.5");
+assert.equal(packageJson.version, "0.6.7");
 assert.equal(packageJson.name, "japanese-reading-helper");
 assert.equal(packageJson.private, true);
 assert.equal(packageJson.license, "MIT");
@@ -34,7 +34,7 @@ assert.match(metadata, /^\/\/ @name\s+日语阅读助手 — 汉字罗马音与�
 assert.match(metadata, /^\/\/ @name:zh-CN\s+日语阅读助手 — 汉字罗马音与片假名英译$/mu);
 assert.match(metadata, /^\/\/ @name:en\s+Japanese Reading Helper — Kanji Romaji & Katakana English$/mu);
 assert.match(metadata, /^\/\/ @namespace\s+yomi-ruby\.local$/mu);
-assert.match(metadata, /^\/\/ @version\s+0\.6\.5$/mu);
+assert.match(metadata, /^\/\/ @version\s+0\.6\.7$/mu);
 assert.match(metadata, /^\/\/ @description\s+Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text\.$/mu);
 assert.match(metadata, /^\/\/ @description:en\s+Add selectable local or online Kanji Romaji and optional online Katakana English ruby to Japanese web text\.$/mu);
 assert.match(metadata, /^\/\/ @description:zh-CN\s+为日语网页添加可选的本地或联网汉字罗马音，以及可选的联网片假名英译。$/mu);
@@ -53,11 +53,11 @@ assert.deepEqual(connectLines, [
   "// @connect      translate.googleapis.com",
   "// @connect      www.bing.com",
   "// @connect      cn.bing.com",
+  "// @connect      unpkg.com",
 ]);
 const grantLines = metadata.match(/^\/\/ @grant\s+.+$/gmu) ?? [];
 assert.deepEqual(grantLines, [
   "// @grant        GM_xmlhttpRequest",
-  "// @grant        GM_getResourceURL",
   "// @grant        GM_registerMenuCommand",
   "// @grant        GM_unregisterMenuCommand",
   "// @grant        GM_getValue",
@@ -123,6 +123,7 @@ for (const storageKey of [
   "yomi-ruby:locale",
   "yomi-ruby:kanji-romaji-mode",
   "yomi-ruby:translation-provider",
+  "yomi-ruby:dictionary-cache:kuromoji@0.1.2:",
 ]) {
   assert.ok(source.includes(storageKey), `Missing approved storage key: ${storageKey}`);
 }
@@ -131,6 +132,7 @@ const yomiRubyStorageLiterals = [...new Set(
 )].sort();
 assert.deepEqual(yomiRubyStorageLiterals, [
   "yomi-ruby:auto-origin:",
+  "yomi-ruby:dictionary-cache:kuromoji@0.1.2:",
   "yomi-ruby:kanji-romaji-mode",
   "yomi-ruby:katakana-origin:",
   "yomi-ruby:locale",
@@ -138,7 +140,7 @@ assert.deepEqual(yomiRubyStorageLiterals, [
 ]);
 assert.equal([...source.matchAll(/\bgmGetValue\(/gu)].length, 4, "Expected only feature, locale, kanji-mode, and provider GM reads.");
 assert.equal([...source.matchAll(/\bgmSetValue\(/gu)].length, 4, "Expected only feature, locale, kanji-mode, and provider GM writes.");
-assert.equal([...source.matchAll(/\bGM_(?:get|set)Value\b/gu)].length, 10, "Unexpected direct GM storage access.");
+assert.equal([...source.matchAll(/\bGM_(?:get|set)Value\b/gu)].length, 12, "Expected settings and lazy dictionary-cache GM storage injection only.");
 assert.match(source, /gmGetValue\(originSettingKey\(feature, origin\), false\) === true/u);
 assert.match(source, /gmSetValue\(originSettingKey\(feature, origin\), Boolean\(enabled\)\)/u);
 assert.match(source, /gmGetValue\(LOCALE_SETTING_KEY, null\)/u);
@@ -217,7 +219,7 @@ assert.match(runtime, /response\.finalUrl \?\? response\.responseURL/u);
 assert.match(runtime, /anonymous: true/u);
 assert.doesNotMatch(runtime, /user-agent|User-Agent/u);
 assert.equal([...runtime.matchAll(/redirect: "follow"/gu)].length, 2);
-assert.equal([...runtime.matchAll(/redirect: "error"/gu)].length, 4);
+assert.equal([...runtime.matchAll(/redirect: "error"/gu)].length, 5);
 assert.match(runtime, /validateTranslationResponseUrl\(response\.finalUrl \?\? response\.responseURL, url\)/u);
 assert.match(runtime, /!Number\.isInteger\(response\?\.status\) \|\| response\.status < 200 \|\| response\.status >= 300/u);
 assert.match(runtime, /new KanjiRuntime\(/u);
@@ -242,19 +244,20 @@ assert.match(kanjiRuntimeSource, /this\.queue = \[\]/u);
 assert.match(katakanaRuntimeSource, /this\.cache = new Map\(\)/u);
 assert.match(katakanaRuntimeSource, /this\.queue = \[\]/u);
 const resourceLines = metadata.match(/^\/\/ @resource\s+.+$/gmu) ?? [];
-assert.equal(resourceLines.length, manifest.dictionary.length, "Expected one SRI @resource per dictionary asset.");
+assert.equal(resourceLines.length, 0, "Lazy dictionary acquisition must not preload resources at installation.");
+assert.doesNotMatch(metadata, /GM_getResourceURL/u);
 for (const asset of manifest.dictionary) {
   assert.ok(
-    resourceLines.includes(`// @resource     ${asset.resourceName} ${asset.url}#sha256=${asset.sha256}`),
-    `Missing exact SRI metadata for ${asset.name}`,
+    runtime.includes(JSON.stringify(asset.url)),
+    `Missing exact approved runtime dictionary URL for ${asset.name}`,
   );
-  assert.doesNotMatch(runtime, new RegExp(escapeRegex(asset.url), "u"));
+  assert.ok(runtime.includes(JSON.stringify(asset.sha256)), `Missing pinned digest for ${asset.name}`);
 }
 
 assert.equal(
   [...source.matchAll(/gmRequest\(\{/g)].length,
   5,
-  "Expected local resource plus independent Google/Bing katakana and kanji GM request call sites.",
+  "Expected lazy dictionary plus independent Google/Bing katakana and kanji GM request call sites.",
 );
 assert.equal(
   [...source.matchAll(/gmRequest:\s*GM_xmlhttpRequest/g)].length,
@@ -264,7 +267,9 @@ assert.equal(
 assert.match(source, /handle = gmRequest\(\{\s*method: "GET",\s*url,\s*timeout,\s*anonymous: true/su);
 assert.match(source, /handle = gmRequest\(\{\s*\.\.\.options,/su);
 assert.match(source, /method: "POST",\s*url: url\.href,\s*headers: \{\s*"Content-Type": "application\/x-www-form-urlencoded;charset=UTF-8",\s*Referer: activeConfig\.pageUrl\s*\},\s*data: data\.toString\(\),\s*timeout: requestTimeoutMs,\s*anonymous: true/su);
-assert.match(source, /requestHandle = gmRequest\(\{\s*method: "GET",\s*url,\s*responseType: "arraybuffer",\s*timeout: [^,]+,\s*anonymous: true/su);
+assert.match(runtime, /loadLazyVerifiedKuromoji/u);
+assert.match(runtime, /responseType: "arraybuffer"/u);
+assert.match(runtime, /base64/u);
 
 for (const legalFile of legalFiles) {
   const legalText = await readFile(new URL(legalFile, projectRoot), "utf8");
@@ -281,9 +286,5 @@ assert.match(source, /Copyright \(c\) 2012 imaya/u);
 assert.match(source, /Copyright \(c\) 2017-2022 Katakana Terminator Contributors/u);
 
 console.log(
-  "build audit passed: Japanese Reading Helper 0.6.5 metadata, five bilingual controls, aligned bounded Google/Bing katakana and kanji batches, independent kanji/provider settings, strict Google/Bing source-romaji boundaries, 12 preloaded SRI resources, five audited GM request paths, and embedded canonical licenses/notices",
+  "build audit passed: Japanese Reading Helper 0.6.7 metadata, bilingual state and retry controls, bounded Google/Bing batches, settings and fixed dictionary-only cache, 12 pinned lazy dictionary URLs with digests, five audited GM request paths, and embedded canonical licenses/notices",
 );
-
-function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
