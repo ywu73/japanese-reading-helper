@@ -12,10 +12,11 @@ optimizations from 0.6.3 and fixes Google's 250 ms request interval across
 separate runtime operations.** See the
 [0.6.4 verification report](docs/verification-report-0.6.4-2026-09-30.md).
 
-The local **0.6.5 candidate is not published**. It fixes immediate disable,
-queued-setting recovery, cleanup after partial page edits, and Google katakana
-response validation. Its automated results and browser-test status are in the
-[0.6.5 verification report](docs/verification-report-0.6.5-2026-10-07.md).
+The local **0.6.7 candidate** includes verified on-demand dictionary acquisition
+and caching, cooperative long-text analysis and DOM insertion, explicit retries
+for failed online candidates, and menu feedback for loading, running and failed
+startup. Verification and remaining release gates are recorded in the
+[0.6.7 report](docs/verification-report-0.6.7-2026-11-06.md).
 
 Previously named **YomiRuby**. Existing setting keys, the userscript namespace,
 and the install filename retain `yomi-ruby`. See the [rename and upgrade notes](docs/rename-0.6.2.md).
@@ -29,7 +30,10 @@ and the install filename retain `yomi-ruby`. See the [rename and upgrade notes](
   installations without that setting migrate to Local so an update cannot
   silently disclose kanji.
 - Local runs pinned `kuromoji@0.1.2` in the page and uses modified Hepburn with
-  macrons. The 0.6.4 build still preloads all twelve dictionaries.
+  macrons. In the 0.6.7 candidate, only an enabled Local path reads the dictionary
+  cache or downloads missing assets. All twelve immutable assets are checked by
+  byte length and SHA-256 before use, including cache hits. Native GZIP decoding
+  remains available. Earlier published versions preload these assets instead.
 - Google/Bing use local `Intl.Segmenter` word boundaries and send only complete,
   deduplicated words containing kanji. Google uses bounded `🧩`-joined batches
   with strict positional gates and an exact single-word fallback; Bing uses
@@ -89,7 +93,22 @@ unconfigured exact origin**.
 
 ## Controls and language
 
-Japanese Reading Helper registers five Tampermonkey menu commands in a stable order: Kanji,
+The feature menu shows loading progress, running state, or startup failure.
+Clicking the feature command during loading cancels that startup and disables
+it for the site. A failed startup exposes a retry command. After an online
+operation finishes with missing readings/translations, a separate command can
+retry those failed candidates on the same provider. Successful cached results
+remain available and the existing request pacing applies. Repeated clicks while
+an operation is pending do not start another retry.
+
+Long Local inputs yield after approximately 1024 characters at Kuromoji's
+existing `、` / `。` boundaries. An uninterrupted span is analyzed as a whole to
+preserve word boundaries. Large annotation plans insert at most 128 annotations
+per chunk while keeping the unprocessed source visible. Stopping or editing a
+partially rendered record uses the same ownership checks and restoration path.
+
+
+Japanese Reading Helper registers five primary Tampermonkey menu commands in a stable order: Kanji,
 Kanji Mode, Katakana, Katakana Translator, Language. Normal enable, disable,
 startup, mode-switch, provider-switch, and language-switch paths
 do not create consent dialogs, loading banners, or success banners. Temporary
@@ -128,12 +147,18 @@ Persistent settings are limited to:
 No reading, phrase, translation, match, failure, queue, or request state is
 persisted.
 
+The local candidate additionally stores only verified compressed dictionary data as
+`{ sha256, base64 }` under twelve fixed
+`yomi-ruby:dictionary-cache:kuromoji@0.1.2:<name>` keys. Invalid cached data is
+discarded and fetched once from the same pinned URL. Cache read failure stops
+initialization; cache write failure permits verified data for this page only.
+
 ## Privacy and network disclosure
 
 | Network party | When it may be contacted | Purpose and data |
 |---|---|---|
 | GitHub Raw | Userscript install and automatic update | Downloads the userscript artifact; normal server request metadata applies. |
-| unpkg | Tampermonkey install and update of fixed resources | Downloads twelve immutable `kuromoji@0.1.2` dictionary resources pinned by URL, size, and SHA-256. Page text is not part of these requests. |
+| unpkg | In the local candidate, only when Local is enabled and verified dictionary data is missing | An anonymous GET downloads each missing immutable `kuromoji@0.1.2` dictionary, pinned by URL, size, and SHA-256. No page text, URL, origin or history is included. Earlier versions acquire resources at installation/update. |
 | Google Translate | Only while an exact-origin online feature is enabled and Google is selected | Katakana sends bounded matched phrases in `q`; Kanji mode sends bounded `🧩`-joined complete-word batches in `q`, requires an aligned `dt=rm` result, and falls back only to exact single-word requests on batch failure. |
 | Bing Translator | Only while an exact-origin online feature is enabled and Bing is selected | An anonymous GET parses temporary configuration without executing page script. Katakana sends bounded newline-joined exact-phrase batches with `ja -> en`; Kanji mode sends bounded newline-joined complete-word batches with `ja -> ja`. Both validate positional alignment, and Kanji accepts only an independent `inputTransliteration`. |
 

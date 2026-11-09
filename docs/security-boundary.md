@@ -3,10 +3,9 @@
 Japanese Reading Helper was previously named YomiRuby. The 0.6.2 rename retains
 the existing setting keys, namespace, permissions, and runtime behavior.
 
-This document describes the 0.6.0 transitional release candidate's intended
-boundary and local evidence. It is not a claim that desktop Chrome + Tampermonkey,
-extension-background traffic, install/update behavior, or real sites have
-already passed verification.
+This document describes the current 0.6.7 candidate. Versioned reports distinguish
+automated checks from actual Chrome/Tampermonkey observations. Earlier browser
+results do not establish the new dictionary download and cache lifecycle.
 
 ## Default-off execution boundary
 
@@ -50,24 +49,33 @@ or fallback endpoint. It does not put page text, readings, titles, origins,
 URLs, or history into a request or persistent store.
 
 Kuromoji executable modules are statically bundled from exact
-`kuromoji@0.1.2` package bytes. Twelve dictionary files are declared as exact
-`@resource` URLs with SHA-256 SRI fragments. At runtime, the verified loader
-accepts only `blob:`, `data:`, `chrome-extension:`, or `moz-extension:` URLs
-returned by `GM_getResourceURL`; it rejects HTTP(S), verifies exact byte length
-and SHA-256, and has no remote fallback.
+`kuromoji@0.1.2` package bytes. Version 0.6.6 removes install-time dictionary
+resources. Only a Local path enabled for this exact origin may read the twelve
+fixed dictionary-cache keys or anonymously download a missing asset from its
+exact `https://unpkg.com/kuromoji@0.1.2/dict/` URL in the embedded manifest.
+Requests contain no body, custom headers or page data. Redirects are rejected;
+an integer 2xx response, exact final URL, byte length and SHA-256 are required.
+
+Each `yomi-ruby:dictionary-cache:kuromoji@0.1.2:<name>` key stores only
+`{ sha256, base64 }` for verified compressed dictionary bytes. Cache hits are
+bounded and verified again; a corrupt value is cleared and fetched once.
+Cache reads fail closed without network access. Failed cache writes leave
+verified bytes usable only in page memory. Downloads are sequential and abortable;
+failed or unverified bytes never reach tokenizer construction or persistent
+storage. There is no downloaded executable, reading API or alternate asset host.
 
 After every compressed asset passes verification, local initialization uses
 `DecompressionStream("gzip")` when that browser API exists. Streams run sequentially
 and receive the initialization abort signal. Native construction or decoding
 failure rejects initialization; it does not retry through another decoder. Only
 API absence selects the existing statically bundled `zlibjs` decoder. This changes
-in-memory decompression, not asset acquisition or executable loading, and creates
-no Worker, additional request or persistent cache. The loader waits for complete
+in-memory decompression, not executable loading, and creates no Worker. The loader waits for complete
 initialization before releasing its temporary dictionary Map.
 
-Version 0.6.0 deliberately retains preloading of all twelve dictionary
-resources. It does not claim that the proposed roughly 17 MiB lazy Tampermonkey
-cache has been implemented or verified.
+Earlier versions preload all twelve dictionaries at installation/update. The
+0.6.6 cache contains the same immutable compressed bytes; its actual installed
+Tampermonkey verification status is recorded in the
+[0.6.7 report](verification-report-0.6.7-2026-11-06.md).
 
 #### Google and Bing modes
 
@@ -181,17 +189,17 @@ additional response items fail closed.
 | Party | Boundary |
 |---|---|
 | GitHub Raw | Sole planned userscript install and automatic-update source. |
-| unpkg | Install/update acquisition of twelve fixed Kuromoji dictionary resources; runtime rejects HTTP(S) resource URLs. |
+| unpkg | Anonymous runtime acquisition of missing fixed dictionaries only after exact-origin Local activation; exact URL, size and SHA-256 are verified before use or caching. |
 | Google Translate | Page-derived requests only while an exact-origin online feature is enabled and Google is selected. |
 | Bing Translator | Anonymous initialization plus page-derived POSTs only while an exact-origin online feature is enabled and Bing is selected. |
 
 The built userscript contains five audited `GM_xmlhttpRequest` call paths: one
-local-resource reader, two katakana adapters, and two kanji adapters. Metadata
-grants only `@connect translate.googleapis.com`, `@connect www.bing.com`, and
-`@connect cn.bing.com`. Static audit rejects wildcard Bing hosts, ordinary
+lazy dictionary reader, two katakana adapters, and two kanji adapters. Metadata
+grants only `@connect translate.googleapis.com`, `@connect www.bing.com`,
+`@connect cn.bing.com`, and `@connect unpkg.com`. Static audit rejects wildcard Bing hosts, ordinary
 `fetch`, XHR, WebSocket, EventSource, `sendBeacon`, Web Storage/IndexedDB,
 dynamic evaluation, remote executable scripts, unexpected request paths, extra
-`@connect` hosts, and runtime remote dictionary URLs.
+`@connect` hosts, and dictionary URLs outside the twelve approved immutable assets.
 
 There is no API key, Bing/Microsoft account or Cookie, custom User-Agent, Azure
 resource, project-owned proxy, analytics, telemetry, crash reporting, remote
@@ -205,7 +213,9 @@ Persistent project-owned values are limited to:
 - global `yomi-ruby:kanji-romaji-mode = "google" | "bing" | "local"`;
 - global `yomi-ruby:translation-provider = "bing" | "google"`;
 - `yomi-ruby:auto-origin:<origin>` for Kanji Romaji activation;
-- `yomi-ruby:katakana-origin:<origin>` for Online Katakana English.
+- `yomi-ruby:katakana-origin:<origin>` for Online Katakana English;
+- twelve `yomi-ruby:dictionary-cache:kuromoji@0.1.2:<name>` values containing only
+  `{ sha256, base64 }` for approved compressed dictionary bytes.
 
 The old `jrr:auto-origin:` key is ignored. Feature settings, locale, kanji mode,
 and provider remain independent except for their separate one-time defaults
@@ -296,13 +306,18 @@ protocol are time-specific evidence from 2026-07-27, not a Google or Microsoft
 guarantee.
 
 Node/jsdom tests, static audit, local dictionary loading, vendor downloads, and
-deterministic builds do not prove anonymous/Cookie-free behavior in
+deterministic builds do not by themselves prove anonymous/Cookie-free behavior in
 Tampermonkey, extension-background traffic, mainland-China reachability,
 resource persistence, x.com compatibility, translation correctness, complete
 browser rollback, performance, GitHub Raw update behavior, or public Release
-identity. Those remain explicit browser/publication gates in
-`docs/manual-test-plan.md`.
+identity. The browser/publication gates in `docs/manual-test-plan.md` require
+separate observations with the version and environment recorded.
 
-The two online kanji paths have not been exercised through real Tampermonkey.
-The current local tests must not be described as proof of installed-extension
-transport, browser compatibility, online reading accuracy, or complete rollback.
+The [0.6.3 browser report](verification-report-0.6.3-2026-09-12.md) records
+both online kanji paths in Chrome + Tampermonkey, including extension-background
+request and header inspection on synthetic content. The
+[0.6.5 report](verification-report-0.6.5-2026-10-07.md) adds installed-artifact
+byte comparison, strict Google success-response validation and fixture rollback
+after page edits. These observations cover the recorded environments and
+scenarios; live request-interval measurements, timed automatic updates, broad
+real-site compatibility and online reading accuracy remain separate checks.

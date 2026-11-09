@@ -1,4 +1,4 @@
-# Desktop Chrome + Tampermonkey manual test plan — Japanese Reading Helper 0.6.5
+# Desktop Chrome + Tampermonkey manual test plan — Japanese Reading Helper 0.6.7
 
 Do not install this candidate, mutate the user's Chrome/Tampermonkey state,
 operate a real site, or disable a separately installed Katakana Terminator
@@ -21,11 +21,11 @@ manual menu wait time must not be presented as provider latency.
 
 1. Confirm the installed file is byte-identical to `dist/yomi-ruby.user.js`.
 2. Inspect the combined public `@name`, localized name metadata, namespace,
-   `@version 0.6.5`, MIT
+   `@version 0.6.7`, MIT
    metadata, homepage/support/download/update URLs, two ordinary web `@match`
-   values, `@noframes`, twelve SRI `@resource` values, exact grants, and exactly
-   three `@connect` values: `translate.googleapis.com`, `www.bing.com`, and
-   `cn.bing.com`.
+   values, `@noframes`, no `@resource` or `GM_getResourceURL`, exact grants, and
+   four `@connect` values: `translate.googleapis.com`, `www.bing.com`,
+   `cn.bing.com`, and `unpkg.com`.
 3. Confirm there is one active Japanese Reading Helper entry and no duplicate
    YomiRuby or obsolete Japanese Romaji Ruby entry running at the same time.
 4. Capture a fresh GitHub Raw install and automatic update from a controlled
@@ -129,10 +129,21 @@ Capture extension-background traffic, not only the page target.
 ### GitHub Raw and unpkg
 
 1. Record install/update requests to the sole Raw URL.
-2. Record all twelve fixed unpkg dictionary resources and compare URL, byte
-   length, and SHA-256 with `vendor/manifest.json`.
-3. On ordinary reload, confirm no runtime unpkg request and that local resource
-   URLs pass exact length/digest verification before use.
+2. With the cache empty and both features off, confirm no unpkg request. Enable
+   Local, record exactly twelve fixed asset GETs and compare final URL, byte
+   length and SHA-256 with `vendor/manifest.json`; inspect extension-background
+   headers for Cookie, Authorization and page Referer/Origin. No page data belongs
+   in a URL, body or custom header.
+3. Reload and enable Local with a complete cache. Require zero dictionary network
+   requests and the same readings after cached size/digest checks. Check that only
+   twelve dictionary keys contain `{ sha256, base64 }`, with no page-derived data.
+4. Corrupt one test dictionary cache entry; require one exact re-download and no
+   alternate host. Inject bad status, redirect, changed URL, size or digest and
+   require no unverified persistence or tokenizer initialization. Disable during
+   download: require abort, no subsequent asset request and no late annotation.
+5. Exercise denied cache reads (no request), denied writes (verified page-only
+   data), cold offline failure and warm offline Local operation. Dictionary
+   corruption/storage failure injection must be confined to disposable test data.
 
 ### Google
 
@@ -264,9 +275,15 @@ unchanged hidden/editable author ruby, and the same author child node and click
 listener. The observer-before-stop and stop-before-observer variants are also
 covered by `tests/integration/coordinator.test.js`.
 
-Confirm 0.6.5 still installs/preloads all twelve Kuromoji resources and performs
-no runtime dynamic dictionary download/cache/delete flow. Treat the proposed
-roughly 17 MiB lazy cache as unimplemented rather than as a failed fallback.
+Use `/candidate?csp` on the separate test origin to exercise the actual candidate
+coordinator with deterministic reading stubs and no installation. Enable candidate
+Kanji, wrap its text without changing it, disable and check complete rollback:
+require exact current markup, original node identity and preserved click listener.
+This fixture checks DOM behavior, not Tampermonkey transport or dictionary storage.
+
+Verify the 0.6.6 cold/warm/corrupt/abort dictionary lifecycle described above.
+Published versions before 0.6.6 still preload the twelve resources; do not use
+their installed behavior as evidence for the new candidate.
 
 Simulate dictionary absence, wrong size/digest, unsupported resource URL,
 provider config/translation failures, setting read/write failures, observer
@@ -284,3 +301,23 @@ authorized migration. Do not claim Chrome/Tampermonkey compatibility, anonymous
 Bing behavior, privacy capture, China reachability, update behavior,
 performance, accuracy, or complete rollback until actual evidence is recorded
 in a new browser verification report.
+
+## 0.6.7 follow-up checks
+
+- Run `node scripts/serve-browser-smoke.mjs` and open `/optimization` and
+  `/optimization?csp`. Run the fixture and record its visible JSON results.
+- Confirm real-tokenizer segment equality for the long synthetic corpus,
+  event-loop timing, progressive DOM insertion and full source restoration.
+- In installed Tampermonkey, cancel Local startup at several dictionary counts,
+  retry a failed startup, switch modes while loading, and verify menu language.
+- Induce an online failure on a synthetic page, retry it explicitly, and check
+  extension-background requests for only failed words on the selected provider.
+  Confirm successful words stay annotated and repeated retry clicks are bounded.
+- While a long record is partially rendered, hide, edit, move or remove its
+  container and disable the feature. Check current text, page-added nodes and
+  listeners, pending jobs, and all generated wrappers.
+- Capture cache reuse, offline/quota/corruption/cancellation behavior in the
+  installed extension separately from the local fixture's transport adapters.
+- Confirm the new version in the extension dashboard after an authorized update.
+  A published update and scheduled automatic-update cycle require their own
+  release authorization and recorded observations.

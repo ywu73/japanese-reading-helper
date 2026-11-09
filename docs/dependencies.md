@@ -10,16 +10,17 @@
 | Official npm tarball | <https://registry.npmjs.org/kuromoji/-/kuromoji-0.1.2.tgz> |
 | npm integrity | `sha512-V0dUf+C2LpcPEXhoHLMAop/bOht16Dyr+mDiIE39yX3vqau7p80De/koFqpiTcL1zzdZlc3xuHZ8u5gjYRfFaQ==` |
 | Executable delivery | Statically bundled at build time |
-| Dictionary delivery | Twelve SHA-256 SRI `@resource` entries, acquired by Tampermonkey at install/update |
+| Dictionary delivery | 0.6.6: twelve fixed URLs downloaded only on Local activation, verified before dictionary-only Tampermonkey caching and again on cache reads |
 | Dictionary CDN base | <https://unpkg.com/kuromoji@0.1.2/> |
 
 The package's Apache 2.0 license text and notice are present in the official npm
 package as `LICENSE-2.0.txt` and `NOTICE.md`. The executable modules are bundled
 from the exact npm package recorded in `package-lock.json`; no remote JavaScript
 is evaluated at runtime. Exact dictionary resource names, sizes, URLs, and
-SHA-256 digests are recorded in `vendor/manifest.json`, emitted as SRI metadata,
-and checked independently by `npm run verify:vendor`. The page runtime accepts
-only Tampermonkey-provided local resource URLs and verifies the bytes again.
+SHA-256 digests are recorded in `vendor/manifest.json`, embedded in the runtime,
+and checked independently by `npm run verify:vendor`. Only those exact immutable
+unpkg URLs may be requested; redirects, changed final URLs, bad lengths and hashes
+fail closed. Earlier `@resource` delivery is retained only in historical tests.
 
 This is an old, pinned compatibility candidate. Exact hashes establish byte
 identity with the reviewed package; they do not establish that the upstream is

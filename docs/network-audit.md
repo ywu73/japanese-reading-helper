@@ -1,5 +1,21 @@
 # Network audit
 
+## Dictionary acquisition introduced in 0.6.6
+
+The 0.6.6 candidate adds `unpkg.com` as a fourth `@connect` host and removes all
+dictionary `@resource` declarations and the `GM_getResourceURL` grant. No asset is
+requested on installation, default-off pages, katakana-only or online-kanji paths.
+An enabled Local path reads fixed dictionary-only cache keys and sequentially
+fetches missing manifest assets with anonymous GETs, no body/custom headers,
+rejected redirects, integer 2xx status, exact final URL, size and SHA-256 checks.
+The cache stores only `{ sha256, base64 }`, is reverified before use, and never
+contains page text or readings. Bad entries are cleared before one bounded fetch;
+aborting Local activation prevents subsequent downloads and ignores late results.
+
+The following sections record earlier delivery models and network observations.
+Current verification and remaining installed-extension gates are tracked in
+[the 0.6.7 report](verification-report-0.6.7-2026-11-06.md).
+
 ## YomiRuby 0.6.0 transitional local candidate model
 
 Version 0.6.0 retains the twelve exact `kuromoji@0.1.2` dictionary resources,

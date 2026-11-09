@@ -37,11 +37,13 @@ The project inherits the global collaboration rules from
   gates are complete; this does not authorize mutable third-party runtime code.
 - Pin every executable dependency to an exact version and a verified SHA-256
   digest before it can be loaded dynamically.
-- The current build statically bundles executable dependencies and declares all
-  twelve fixed dictionaries as Tampermonkey resources. Local tokenizer creation
-  is lazy: load and verify only Tampermonkey-provided local resource URLs after
-  Local mode is enabled. Do not add runtime remote downloads, unverified
-  execution, eager tokenizer initialization, or a remote reading fallback.
+- The current build statically bundles executable dependencies. Only after Local
+  mode is enabled for the exact origin, it may anonymously GET the twelve fixed
+  `https://unpkg.com/kuromoji@0.1.2/dict/` assets in `vendor/manifest.json`.
+  Reject redirects and require exact final URLs, integer 2xx status, byte length
+  and SHA-256 before use or storage. Revalidate cached bytes on every load.
+  Do not preload dictionaries at installation, execute downloaded code, initialize
+  the tokenizer eagerly, or add a remote reading fallback.
 - Keep both features disabled for an unconfigured origin. Annotate only tokens
   that contain kanji when the kanji module alone is enabled.
 - Use whole-token readings for kanji-kana mixed words.
@@ -55,7 +57,9 @@ The project inherits the global collaboration rules from
   limited to the global `yomi-ruby:locale` enum, the global
   `yomi-ruby:kanji-romaji-mode = "google" | "bing" | "local"` enum, the global
   `yomi-ruby:translation-provider = "bing" | "google"` enum, and exact-origin
-  boolean feature settings.
+  boolean feature settings. The only additional persistent data is the twelve
+  `yomi-ruby:dictionary-cache:kuromoji@0.1.2:<name>` entries containing an approved
+  dictionary's SHA-256 and base64-encoded compressed bytes; never page content.
 
 ## 3. DOM Safety
 
@@ -92,8 +96,8 @@ The project inherits the global collaboration rules from
 Before a userscript build is considered deliverable, verify at minimum:
 
 - dependency versions, licenses, URLs, and SHA-256 digests;
-- lazy local tokenizer activation and verified preloaded resources in the
-  supported Tampermonkey environment;
+- lazy local tokenizer activation, verified cold downloads, cache reuse and
+  corruption recovery in the supported Tampermonkey environment;
 - no page text in asset/default-off requests; online requests contain only the
   selected feature's approved exact words or phrases, without surrounding text;
 - strict Bing redirect/config parsing, anonymous requests, bounded 401 refresh,
